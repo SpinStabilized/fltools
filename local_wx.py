@@ -13,6 +13,7 @@ import pathlib
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
+import maidenhead
 import requests
 
 # Logging Parameters
@@ -66,6 +67,7 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
         as_json = resp.json() # type: ignore
     except json.JSONDecodeError as e:
         logging.error(f"Could not parse Pirate Weather response: {e}")
+    
     return as_json
 
 
@@ -121,7 +123,7 @@ def format_current(data: dict, units: str) -> str:
     uv = cur.get("uvIndex")
 
     parts = []
-    parts.append(f"WX @ {time_str}" if time_str else "WX")
+    parts.append(f"WX")
     parts.append(f"{summary}")
     if temp is not None:
         line = f"Temp {temp:.0f}{u['temp']}"
@@ -141,52 +143,49 @@ def format_current(data: dict, units: str) -> str:
 
 def format_alerts(data: dict) -> str:
     """Format the alert information to provide with the weather information."""
-    alerts = data.get("alerts")
-    if not alerts:
-        return "No active alerts."
-
+    alerts: list | None = data.get("alerts")
+    alert_report: str = ""
     lines = []
-    for a in alerts:
-        title = a.get("title", "Alert")
-        severity = a.get("severity", "Unknown")
-        regions = a.get("regions") or []
-        region_str = ", ".join(regions) if regions else "N/A"
-        expires = a.get("expires")
-        expires_str = "N/A"
-        if expires and expires != -999:
-            expires_str = datetime.fromtimestamp(
-                expires, tz=timezone.utc
-            ).astimezone().strftime("%Y-%m-%d %H:%M %Z")
-        lines.append(
-            f"[{severity.upper()}] {title} - {region_str} - expires {expires_str}"
-        )
-    return "\n".join(lines)
+
+    if alerts:
+        for a in alerts:
+            title = a.get("title", "Alert")
+            severity = a.get("severity", "Unknown")
+            lines.append(f"[{severity.upper()}] {title}")
+        lines = list(set(lines))
+        alert_report =  " | ".join(lines)
+
+    return alert_report
 
 
 def main():
     load_dotenv(SCRIPT_DIR/".env")
-    api_key = os.getenv("PW_API_KEY", "YOUR_API_KEY_HERE")
-    latitude = os.getenv("PW_LAT", "39.2037")     # Columbia, MD by default
-    longitude = os.getenv("PW_LON", "-76.8610")
-    units = os.getenv("PW_UNITS", "us")           # us, si, ca, uk, uk2
+    api_key: str = os.getenv("PW_API_KEY", "YOUR_API_KEY_HERE")
+    units: str = os.getenv("PW_UNITS", "us")           # us, si, ca, uk, uk2
+    my_grid: str = os.getenv("FLDIGI_MY_LOCATOR", "")
+    if my_grid:
+        latitude, longitude = maidenhead.to_location(my_grid, center=True)
+    else:
+        latitude, longitude = 39.2037, -76.8610
     
     if not api_key or api_key == "YOUR_API_KEY_HERE":
         logging.error("ERROR: Pirate Weather API key not set. Edit pirate_wx.py or set PW_API_KEY.")
         sys.exit(1)
 
     try:
-        data = fetch_weather(api_key, latitude, longitude, units)
+        data = fetch_weather(api_key, f"{latitude:0.4f}", f"{longitude:0.4f}", units)
     except RuntimeError as e:
         # Print something short so it doesn't break a macro insertion,
         # but also signal failure on stderr / exit code.
         logging.error("WX unavailable.")
         logging.error(str(e))
+        print("")
         sys.exit(1)
 
     output_lines = [format_current(data, units)]
 
     alerts_text = format_alerts(data)
-    if alerts_text != "No active alerts.":
+    if alerts_text:
         output_lines.append("ALERTS: " + alerts_text)
 
     print("\n".join(output_lines))
