@@ -11,9 +11,14 @@ wheels/
 
 # Environment Files
 .env
+.test_env
 
 # Log Files
+logs/
 *.log
+
+# IDE
+.vscode/
 
 # Utility files
 clublog_lockout.txt
