@@ -11,7 +11,7 @@ wheels/
 
 # Environment Files
 .env
-
+.test_env
 # Log Files
 *.log
 

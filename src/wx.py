@@ -1,46 +1,19 @@
-#!/usr/bin/env python3
 """
 local_wx.py - Pull current conditions + active alerts from Pirate Weather
 and print a compact, radio-friendly text block for use with FLDigi macros.
 """
 
 import os
-import sys
+# import sys
 import json
 import logging
-import logging.handlers
-import pathlib
-from datetime import datetime, timezone
-from dotenv import load_dotenv
+# import logging.handlers
 
 import maidenhead
 import requests
 
-# Logging Parameters
-LOG_FILE: str = "local_wx.log"
-LOG_MAX_SIZE: int = 1_000_000
-LOG_COUNT: int = 3
-LOG_ENCODING: str = "utf-8"
-
-# Anchor file paths to the script's own directory rather than the current
-# working directory
-SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
-
 BASE_URL: str = "https://api.pirateweather.net/forecast"
 TIMEOUT_SECONDS: int = 10
-
-# Configure logging to a rotating file (caps log at ~1 MB, keeping up to 3
-# old copies) so it doesn't grow too big over all QSOs being logged.
-logging.basicConfig(
-    handlers=[
-        logging.handlers.RotatingFileHandler(
-            SCRIPT_DIR / LOG_FILE, 
-            maxBytes=LOG_MAX_SIZE, backupCount=LOG_COUNT, encoding=LOG_ENCODING
-        )
-    ],
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 
 def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
     """Request only the 'currently' and 'alerts' blocks from Pirate Weather."""
@@ -105,12 +78,6 @@ def format_current(data: dict, units: str) -> str:
         return "Current conditions unavailable."
 
     u = unit_labels(units)
-    ts = cur.get("time")
-    time_str = ""
-    if ts:
-        time_str = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime(
-            "%Y-%m-%d %H:%M %Z"
-        )
 
     summary = cur.get("summary", "N/A")
     temp = cur.get("temperature")
@@ -158,11 +125,11 @@ def format_alerts(data: dict) -> str:
     return alert_report
 
 
-def main():
-    load_dotenv(SCRIPT_DIR/".env")
-    api_key: str = os.getenv("PW_API_KEY", "YOUR_API_KEY_HERE")
-    units: str = os.getenv("PW_UNITS", "us")           # us, si, ca, uk, uk2
+def wx():
+    api_key: str = os.getenv("FLTOOLS_PW_API_KEY", "YOUR_API_KEY_HERE")
+    units: str = os.getenv("FLTOOLS_PW_UNITS", "us")           # us, si, ca, uk, uk2
     my_grid: str = os.getenv("FLDIGI_MY_LOCATOR", "")
+    logging.info(api_key)
     if my_grid:
         latitude, longitude = maidenhead.to_location(my_grid, center=True)
     else:
@@ -170,7 +137,6 @@ def main():
     
     if not api_key or api_key == "YOUR_API_KEY_HERE":
         logging.error("ERROR: Pirate Weather API key not set. Edit pirate_wx.py or set PW_API_KEY.")
-        sys.exit(1)
 
     try:
         data = fetch_weather(api_key, f"{latitude:0.4f}", f"{longitude:0.4f}", units)
@@ -180,16 +146,11 @@ def main():
         logging.error("WX unavailable.")
         logging.error(str(e))
         print("")
-        sys.exit(1)
 
-    output_lines = [format_current(data, units)]
+    output_lines = [format_current(data, units)] # type: ignore
 
-    alerts_text = format_alerts(data)
+    alerts_text = format_alerts(data) # type: ignore
     if alerts_text:
         output_lines.append("ALERTS: " + alerts_text)
 
     print("\n".join(output_lines))
-
-
-if __name__ == "__main__":
-    main()
