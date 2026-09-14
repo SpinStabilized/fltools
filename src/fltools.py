@@ -26,7 +26,7 @@ SCRIPT_DIR = pathlib.Path(__file__).resolve().parent.parent
 logging.basicConfig(
     handlers=[
         logging.handlers.RotatingFileHandler(
-            SCRIPT_DIR / LOG_FILE,
+            SCRIPT_DIR / "logs" / LOG_FILE,
             maxBytes=LOG_MAX_SIZE, backupCount=LOG_COUNT, encoding=LOG_ENCODING
         )
     ],

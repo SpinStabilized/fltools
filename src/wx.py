@@ -4,13 +4,13 @@ and print a compact, radio-friendly text block for use with FLDigi macros.
 """
 
 import os
-# import sys
 import json
 import logging
-# import logging.handlers
 
 import maidenhead
 import requests
+
+import flenv
 
 BASE_URL: str = "https://api.pirateweather.net/forecast"
 TIMEOUT_SECONDS: int = 10
@@ -128,8 +128,9 @@ def format_alerts(data: dict) -> str:
 def wx():
     api_key: str = os.getenv("FLTOOLS_PW_API_KEY", "YOUR_API_KEY_HERE")
     units: str = os.getenv("FLTOOLS_PW_UNITS", "us")           # us, si, ca, uk, uk2
-    my_grid: str = os.getenv("FLDIGI_MY_LOCATOR", "")
-    logging.info(api_key)
+    flvars: dict[str, str] = flenv.get_env()
+    my_grid: str = flvars.get("FLDIGI_MY_LOCATOR", "")
+    
     if my_grid:
         latitude, longitude = maidenhead.to_location(my_grid, center=True)
     else:
