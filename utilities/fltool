@@ -30,23 +30,15 @@
 #   the Python process below - nothing extra to do for that part.
 #   Your Python code just reads os.environ["FLDIGI_..."].
 
-set -euo pipefail
+set -o errexit # Exit on command failure
+set -o nounset # Script fails on unset variable
+set -o pipefail # Script fails on any command in a pipe failing
 
-# --- Point this at the directory containing fltools's pyproject.toml ---
-# Override per-invocation by exporting fltools_PROJECT_DIR before fldigi
-# starts, or just hardcode your real path here.
-PROJECT_DIR="${fltools_PROJECT_DIR:-$HOME/source/fltoolss}"
+PROJECT_DIR=$HOME/source/fltools
 
-# Where stderr (uv status messages, Python tracebacks) goes instead of
-# the TX buffer. Tail this file while testing macros.
-LOG_FILE="${fltools_LOG_FILE:-$HOME/source/fltoolss/logs/fltools.err.log}"
+LOG_FILE=$HOME/source/fltoolss/logs/fltools.err.log
 
-UV_BIN="${/opt/homebrew/bin/uv}
-
-if [ ! -d "$PROJECT_DIR" ]; then
-    echo "fltools: project dir not found: $PROJECT_DIR (set fltoolsS_PROJECT_DIR)" >&2
-    exit 1
-fi
+UV_BIN=/opt/homebrew/bin/uv
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
