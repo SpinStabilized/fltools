@@ -27,18 +27,23 @@ logging.basicConfig(
     handlers=[
         logging.handlers.RotatingFileHandler(
             SCRIPT_DIR / "logs" / LOG_FILE,
-            maxBytes=LOG_MAX_SIZE, backupCount=LOG_COUNT, encoding=LOG_ENCODING
+            maxBytes=LOG_MAX_SIZE,
+            backupCount=LOG_COUNT,
+            encoding=LOG_ENCODING,
         )
     ],
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
 
+
 def handle_qrz(args: argparse.Namespace) -> None:
-   logging.info(f"Exporting to QRZ")
+    logging.info(f"Exporting to QRZ")
+
 
 def handle_cl(args: argparse.Namespace) -> None:
     logging.info(f"Exporting To ClubLog")
+
 
 def handle_wx(args: argparse.Namespace) -> None:
     my_grid: str = os.getenv("FLDIGI_MY_LOCATOR", "")
@@ -47,27 +52,39 @@ def handle_wx(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="fltools", description="Extra macro tools for FLDigi")
-    
-    subparsers = parser.add_subparsers(dest="command", required=True, help="Available subcommands")
+    parser = argparse.ArgumentParser(
+        prog="fltools", description="Extra macro tools for FLDigi"
+    )
 
-    parser_greet = subparsers.add_parser("qrz", help="Send the currently selected FLDigi log entry to QRZ")
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="Available subcommands"
+    )
+
+    parser_greet = subparsers.add_parser(
+        "qrz", help="Send the currently selected FLDigi log entry to QRZ"
+    )
     parser_greet.set_defaults(func=handle_qrz)
 
-    parser_calc = subparsers.add_parser("clublog", help="Send the currently selected FLDigi log entry to ClubLog")
+    parser_calc = subparsers.add_parser(
+        "clublog", help="Send the currently selected FLDigi log entry to ClubLog"
+    )
     parser_calc.set_defaults(func=handle_cl)
 
-    parser_calc = subparsers.add_parser("wx", help="Get current weather and any alerts from Pirate Weather")
+    parser_calc = subparsers.add_parser(
+        "wx", help="Get current weather and any alerts from Pirate Weather"
+    )
     parser_calc.set_defaults(func=handle_wx)
 
     args = parser.parse_args()
 
     return args
 
+
 def main() -> None:
     args: argparse.Namespace = parse_args()
-    dotenv.load_dotenv(SCRIPT_DIR/".test_env")
+    dotenv.load_dotenv(SCRIPT_DIR / ".test_env")
     args.func(args)
+
 
 if __name__ == "__main__":
     main()
