@@ -3,13 +3,19 @@ Functions for retrieving the FLDigi environmental variables that are exported
 when the EXEC macro is invoked.
 """
 
+import logging
 import os
+import utils
+
+from typing import Final
+
+logger: logging.Logger = utils.get_fltools_logger()
 
 # FLDigi Environmental Prefix
-FLDIGI_ENV_PREFIX = "FLDIGI_"
+FLDIGI_ENV_PREFIX: Final[str] = "FLDIGI_"
 
 # Maps the FLDigi macro environment variable names to the ADIF field names
-FLENV_KEY_MAP: dict[str, str] = {
+FLENV_KEY_MAP: Final[dict[str, str]] = {
     "FLDIGI_LOGBOOK_ARRL_SECT_IN": "arrl_sect",
     "FLDIGI_LOGBOOK_BAND": "band",
     "FLDIGI_LOGBOOK_CALL": "call",
@@ -42,7 +48,7 @@ FLENV_KEY_MAP: dict[str, str] = {
 }
 
 # ADIF fields QRZ's logbook API needs at minimum to accept a QSO record.
-QRZ_REQUIRED_ADIF_FIELDS: list[str] = [
+QRZ_REQUIRED_ADIF_FIELDS: Final[list[str]] = [
     "call",
     "qso_date",
     "time_on",
@@ -51,11 +57,16 @@ QRZ_REQUIRED_ADIF_FIELDS: list[str] = [
 ]
 
 
-def get_env() -> dict[str, str]:
-    # Filter the environment variables
+def get_env_all() -> dict[str, str]:
+    """Get all FLDIGI exported environmental variables."""
     filtered_env: dict[str, str] = {
         key: value.strip()
         for key, value in os.environ.items()
         if key.startswith(FLDIGI_ENV_PREFIX)
     }
     return filtered_env
+
+
+def get_env(key: str, default: str = "") -> str:
+    """Get a single environmental variable with a default to an empty string."""
+    return os.getenv(key, default)

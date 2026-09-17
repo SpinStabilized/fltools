@@ -3,17 +3,23 @@ local_wx.py - Pull current conditions + active alerts from Pirate Weather
 and print a compact, radio-friendly text block for use with FLDigi macros.
 """
 
-import os
 import json
 import logging
-
 import maidenhead
 import requests
 
-import flenv
+from typing import Final
 
-BASE_URL: str = "https://api.pirateweather.net/forecast"
-TIMEOUT_SECONDS: int = 10
+import flenv
+import utils
+
+logger: logging.Logger = utils.get_fltools_logger()
+
+BASE_URL: Final[str] = "https://api.pirateweather.net/forecast"
+TIMEOUT_SECONDS: Final[int] = 10
+DEFAULT_LAT: Final[float] = 39.2037
+DEFAULT_LON: Final[float] = -76.8610
+AGENT_ID: Final[str] = "fltools/1.0"
 
 
 def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
@@ -23,26 +29,26 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
     exclude = "minutely,hourly,daily,day_night,flags,summary"
     url = f"{BASE_URL}/{api_key}/{lat},{lon}" f"?units={units}&exclude={exclude}"
 
-    headers = {"User-Agent": "pirate_wx.py/1.0"}
+    headers = {"User-Agent": AGENT_ID}
     try:
         resp = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
         resp.raise_for_status()
     except requests.exceptions.HTTPError as e:
         body = resp.text[:200] if resp is not None else ""  # type: ignore
-        logging.error(f"HTTP {resp.status_code} from Pirate Weather: {body}")  # type: ignore
+        logger.error(f"HTTP {resp.status_code} from Pirate Weather: {body}")  # type: ignore
     except requests.exceptions.RequestException as e:
-        logging.error(f"Network error reaching Pirate Weather: {e}")
+        logger.error(f"Network error reaching Pirate Weather: {e}")
 
     as_json: dict = {}
     try:
         as_json = resp.json()  # type: ignore
     except json.JSONDecodeError as e:
-        logging.error(f"Could not parse Pirate Weather response: {e}")
+        logger.error(f"Could not parse Pirate Weather response: {e}")
 
     return as_json
 
 
-def deg_to_compass(deg):
+def deg_to_compass(deg: int) -> str:
     """Convert a wind bearing in degrees to a 16-point compass direction."""
     if deg is None:
         return "N/A"
@@ -143,18 +149,17 @@ def format_alerts(data: dict) -> str:
 
 
 def wx():
-    api_key: str = os.getenv("FLTOOLS_PW_API_KEY", "YOUR_API_KEY_HERE")
-    units: str = os.getenv("FLTOOLS_PW_UNITS", "us")  # us, si, ca, uk, uk2
-    flvars: dict[str, str] = flenv.get_env()
-    my_grid: str = flvars.get("FLDIGI_MY_LOCATOR", "")
+    api_key: str = flenv.get_env("FLTOOLS_PW_API_KEY")
+    units: str = flenv.get_env("FLTOOLS_PW_UNITS", "us")  # us, si, ca, uk, uk2
+    my_grid: str = flenv.get_env("FLDIGI_MY_LOCATOR")
 
     if my_grid:
         latitude, longitude = maidenhead.to_location(my_grid, center=True)
     else:
-        latitude, longitude = 39.2037, -76.8610
+        latitude, longitude = DEFAULT_LAT, DEFAULT_LON
 
-    if not api_key or api_key == "YOUR_API_KEY_HERE":
-        logging.error(
+    if not api_key or api_key == "":
+        logger.error(
             "Pirate Weather API key not set. Edit pirate_wx.py or set PW_API_KEY."
         )
 
@@ -163,8 +168,8 @@ def wx():
     except RuntimeError as e:
         # Print something short so it doesn't break a macro insertion,
         # but also signal failure on stderr / exit code.
-        logging.error("WX unavailable.")
-        logging.error(str(e))
+        logger.error("WX Unavailable.")
+        logger.error(str(e))
         print("")
 
     output_lines = [format_current(data, units)]  # type: ignore
