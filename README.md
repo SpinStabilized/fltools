@@ -128,9 +128,10 @@ no useful `PATH`, and a stdout stream that goes out over the air).
 ### Prerequisites
 
 * **FLDigi**, with macro editing available (Configure > Macros).
-* **Python 3.14 or later.** The version is pinned in `.python-version` and
-  enforced by `pyproject.toml`. `uv` will fetch it for you if you do not have it.
-* **[uv][uv-url]** for dependency management and running the tool.
+* **Python 3.10 or later.** `match` statements and PEP 604 unions set the floor.
+  `requires-python` in `pyproject.toml` enforces it, `.python-version` pins the
+  interpreter used for development, and `uv` will fetch one if you do not have it.
+* **[uv][uv-url]** for installing the tool and managing its dependencies.
 * **Credentials for whichever subcommands you plan to use:**
   * QRZ: an XML Logbook Data subscription, then your key from
     **Logbook Data > Logbook Settings > API Key**.
@@ -146,36 +147,34 @@ no useful `PATH`, and a stdout stream that goes out over the air).
    cd fltools
    ```
 
-2. Sync the environment.
+2. Install `fltools` as a tool. This puts a `fltools` executable on your
+   `PATH` (usually `~/.local/bin`) in its own isolated environment.
    ```sh
-   uv sync
+   uv tool install .
    ```
+   Add `--editable` if you are working on the source and want your edits live.
+   Either way, re-run with `--reinstall` after changing dependencies or the
+   version, since those are baked in at install time.
 
-3. Create your `.env` from the example and fill it in.
+3. Create your `.env`. `fltools` looks for it in a platform-specific
+   configuration directory, so ask it where that is rather than guessing.
    ```sh
-   cp .example_env .env
+   fltools --paths
+   cp .example_env "$(dirname "$(fltools --paths | awk '/env file/ {print $3}')")/.env"
    ```
-   > **Note:** `.env` grants write access to your logbooks. It is already in
-   > `.gitignore`. Keep it that way.
+   > **Note:** `.env` grants write access to your logbooks. Keep it out of
+   > version control.
 
 4. Install the launcher shim into FLDigi's script directory. FLDigi prepends
    `~/.fldigi/scripts` to `PATH` for `<EXEC>` children, so this is what lets a
-   macro simply say `fltools qrz`.
+   macro simply say `fltools qrz`. The shim needs no editing: it locates the
+   installed executable by absolute path.
    ```sh
    cp utilities/fltools ~/.fldigi/scripts/fltools
    chmod +x ~/.fldigi/scripts/fltools
    ```
 
-5. Edit the two paths at the top of `~/.fldigi/scripts/fltools` to match your
-   machine.
-   ```sh
-   PROJECT_DIR=$HOME/source/fltools   # where you cloned this repo
-   UV_BIN=/opt/homebrew/bin/uv        # output of `which uv`
-   ```
-   The default `UV_BIN` is the Homebrew path on Apple Silicon. On most Linux
-   installs it will be `$HOME/.local/bin/uv` instead.
-
-6. Add a macro in FLDigi (Configure > Macros) for each subcommand you want on a
+5. Add a macro in FLDigi (Configure > Macros) for each subcommand you want on a
    key.
    ```
    <EXEC>fltools qrz</EXEC>
@@ -187,8 +186,11 @@ no useful `PATH`, and a stdout stream that goes out over the air).
 
 ### Configuration
 
-All configuration lives in a `.env` file in the project root, beside
-`pyproject.toml`. It is read at startup by every subcommand.
+All configuration lives in a `.env` file, read at startup by every subcommand.
+It is **not** in the project directory: `fltools` follows platform convention,
+which means `~/.config/fltools/.env` on Linux and
+`~/Library/Application Support/fltools/.env` on macOS. Run `fltools --paths` for
+the authoritative answer on your machine.
 
 | Variable             | Used by   | Description                                                                        |
 |----------------------|-----------|------------------------------------------------------------------------------------|
@@ -196,16 +198,34 @@ All configuration lives in a `.env` file in the project root, beside
 | `CLUBLOG_EMAIL`      | `clublog` | The email address on your Club Log account. Required.                              |
 | `CLUBLOG_PASSWORD`   | `clublog` | Club Log Application Password. Required.                                           |
 | `CLUBLOG_API_KEY`    | `clublog` | Club Log API key. Required.                                                        |
-| `FLTOOLS_CALL`       | `clublog` | Station callsign the QSO is logged under. Falls back to FLDigi's `FLDIGI_MY_CALL`. |
+| `FLTOOLS_CALL`       | all       | The callsign this installation is set up for. See below.                           |
 | `FLTOOLS_PW_API_KEY` | `wx`      | Pirate Weather API key. Required.                                                  |
 | `FLTOOLS_PW_UNITS`   | `wx`      | Unit system: `us`, `si`, `ca`, `uk`, or `uk2`. Defaults to `us`.                   |
 
 `.example_env` lists every one of these with empty values, so copying it is the
 fastest way to get a valid starting file.
 
+`FLTOOLS_CALL` is **not** the callsign a QSO is logged under. That always comes
+from FLDigi's `FLDIGI_MY_CALL`, so the log reflects whoever was actually on the
+air. `FLTOOLS_CALL` says which callsign's logbooks the credentials above belong
+to, and it is what `fltools` reports in its `User-Agent`. When the two differ,
+someone else is operating and both uploads refuse rather than file the contact
+in the wrong logbook.
+
+Two variables are deliberately absent from `.env`, because they decide where
+`.env` itself is found and so must be set in the environment:
+
+| Variable       | Effect                                                                   |
+|----------------|--------------------------------------------------------------------------|
+| `FLTOOLS_HOME` | Put `.env`, `logs/`, and `state/` under one directory instead of the platform layout. |
+| `FLTOOLS_ENV`  | Use one specific `.env` file, overriding only the config location.       |
+
+If you set `FLTOOLS_HOME`, set it in both your shell profile and the shim, or
+macro runs and terminal runs will read different files.
+
 Your grid square is not configured here. `wx` takes it from FLDigi's
-`FLDIGI_MY_LOCATOR`, and falls back to a hardcoded default near Ellicott City,
-Maryland if FLDigi does not supply one.
+`FLDIGI_MY_LOCATOR` (Configure > Operator > Station), and falls back to a
+hardcoded default near Ellicott City, Maryland if FLDigi does not supply one.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -224,10 +244,18 @@ fltools wx         # print current conditions and alerts
 fltools --help
 ```
 
-Run straight from the repo without the shim:
+Subcommands are the things that go on a macro key. Diagnostics are top-level
+flags, so the subcommand list stays a list of macro verbs:
 
 ```sh
-uv run src/fltools.py wx
+fltools --paths    # where .env, the log, and the lockout actually live
+fltools --version
+```
+
+Run from a checkout without installing the tool:
+
+```sh
+uv run fltools wx
 ```
 
 One thing to know before putting these on keys: FLDigi captures the child
@@ -315,7 +343,9 @@ unknown subcommand, which overlaps with `clublog`'s retry code.
 
 Both upload subcommands map FLDigi's exported variables to ADIF fields as
 follows. Blank fields are omitted from the record rather than sent empty, and
-`time_on` / `time_off` have their colons stripped to satisfy ADIF.
+`time_on` / `time_off` have their colons stripped to satisfy ADIF. `station_callsign`
+is added to the record from `FLDIGI_MY_CALL`, which FLDigi does not export as a
+logbook field.
 
 | FLDigi variable               | ADIF field     |
 |-------------------------------|----------------|
@@ -351,52 +381,68 @@ follows. Blank fields are omitted from the record rather than sent empty, and
 
 ### Logging
 
-Two files, both under `logs/` in the project root:
+Two files, both in the platform log directory (`~/Library/Logs/fltools` on
+macOS, `~/.local/state/fltools/log` on Linux). `fltools --paths` reports the
+exact location.
 
-| File                   | Written by     | Contents                                             |
-|------------------------|----------------|------------------------------------------------------|
-| `logs/fltools.log`     | the Python CLI | Success and failure of each run, plus API responses. |
-| `logs/fltools.err.log` | the bash shim  | stderr from `uv` and any Python traceback.           |
+| File                    | Written by     | Contents                                             |
+|-------------------------|----------------|------------------------------------------------------|
+| `fltools.log`           | the Python CLI | Success and failure of each run, plus API responses. |
+| `fltools-startup.err`   | the bash shim  | Launch failures only, before Python starts.          |
 
 `fltools.log` rotates at roughly 1 MB and keeps 3 older copies. The default level
 is `INFO`. For the full ADIF record sent upstream, pass `logging.DEBUG` to
-`utils.fltools_logger_config()` in `src/fltools.py`.
+`utils.fltools_logger_config()` in `src/fltools/cli.py`. Unhandled exceptions are
+routed here too rather than to stderr.
 
 Since macro output is invisible by design, tailing the log is the way to watch a
 QSO go up:
 
 ```sh
-tail -f logs/fltools.log
+tail -f "$(fltools --paths | awk '/log file/ {print $3}')"
 ```
 
 ### Troubleshooting
 
-**`uv: command not found` in `fltools.err.log`**
+**`fltools shim: executable not found` in `fltools-startup.err`**
 The `<EXEC>` child does not get a login or interactive shell, so it never sources
-your `.bashrc` or `.profile` and `uv` may not be on `PATH` even though it works
-fine in your terminal. This is exactly what `UV_BIN` in the shim is for. Set it
-to the output of `which uv`.
+your `.bashrc` or `.profile` and `~/.local/bin` is probably not on its `PATH`.
+The shim searches absolute paths instead. Confirm `uv tool list` shows `fltools`,
+and if the executable is somewhere unusual, set `FLTOOLS_BIN` to its full path.
 
 **Nothing at all happens when I press the key**
 Confirm the shim is executable and that FLDigi sees it. It should appear in the
-macro editor's exec-script list. Then check `logs/fltools.err.log`.
+macro editor's exec-script list. Then check `fltools-startup.err`. A zero-byte
+file means the shim ran and handed off cleanly, so look in `fltools.log` next.
+
+**`No .env loaded from ...`**
+The file is not where `fltools` is looking. The message names the exact path it
+tried; `fltools --paths` shows the same thing. Note that this is a configuration
+directory, not the project directory.
 
 **`QRZ_KEY is not set (check .env).`**
-`.env` is missing, or it is not in the project root next to `pyproject.toml`.
-The shim's `PROJECT_DIR` has to point at the clone for the file to be found.
+`.env` was found but the key is blank, or `.env` was not found at all (look for
+the warning above it in the log).
+
+**`Aborting upload: <CALL> is operating, but this installation is configured for <CALL>`**
+FLDigi's callsign does not match `FLTOOLS_CALL`. The credentials here belong to
+one logbook, and QRZ in particular has no way to redirect an upload, so the QSO
+is refused rather than filed under the wrong call. Portable and mobile suffixes
+count as different callsigns.
 
 **`Aborting upload: missing required field(s): ...`**
 One of `call`, `qso_date`, `time_on`, `band`, or `mode` was empty in the selected
 FLDigi entry. Fill it in and press the key again.
 
 **`QSO upload failed: {'RESULT': 'FAIL', 'REASON': ...}`**
-QRZ rejected the record. The `REASON` text in `logs/fltools.log` usually says
+QRZ rejected the record. The `REASON` text in `fltools.log` usually says
 why: an invalid or expired key, a logbook not enabled for API access, or a
 duplicate contact.
 
 **`Upload blocked: lockout in place ...`**
 Club Log rejected your credentials on an earlier run. Fix them in `.env`, delete
-`src/clublog_lockout.txt`, then try again.
+the lockout file, then try again. The error message names its full path, as does
+`fltools --paths`.
 
 **Weather comes back empty or wrong location**
 `wx` needs `FLDIGI_MY_LOCATOR`, which means your grid square has to be set in
@@ -428,9 +474,14 @@ making `fltools` one tool rather than three under a shared launcher.
       returns empty instead of raising `KeyError`
 - [ ] Rename `QRZ_REQUIRED_ADIF_FIELDS`, now that `clublog` validates against it
       too
-- [ ] Fill in project metadata in `pyproject.toml` (name, description)
-- [ ] Add a `--version` flag
-- [ ] Package properly so `uv tool install` can replace the bash shim
+- [ ] Make the `wx` fallback location configurable, or refuse to transmit rather
+      than report weather for somewhere the operator has never been
+- [ ] Add a `Makefile` covering the things currently done by hand: install the
+      shim into `~/.fldigi/scripts`, install and reinstall the tool, rebuild the
+      project venv, and run the linters. One `make install` beats remembering
+      which `uv` incantation rebuilds what
+- [ ] Support more than one callsign per installation, so portable operation and
+      a second operator do not require editing `.env`
 
 See the [open issues](https://github.com/SpinStabilized/fltools/issues) for a
 full list of proposed features and known issues.
