@@ -66,11 +66,18 @@ CLUBLOG_URL: Final[str] = "https://clublog.org/realtime.php"
 SCRIPT_DIR: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent
 LOCKOUT_PATH: Final[pathlib.Path] = SCRIPT_DIR / LOCKOUT_FILE
 
+# Exit codes (see module docstring)
+EXIT_OK: Final[int] = 0
+EXIT_FAIL: Final[int] = 1
+EXIT_RETRY: Final[int] = 2
+EXIT_AUTH: Final[int] = 3
+
 
 class UploadResult(NamedTuple):
     """Outcome of a single real-time upload attempt."""
 
     accepted: bool
+    exit_code: int
     message: str
 
 
@@ -132,7 +139,7 @@ def upload_to_clublog(
             CLUBLOG_URL, data=payload, timeout=10, headers=headers
         )
     except requests.exceptions.RequestException as e:
-        return UploadResult(False, f"HTTP request failed: {e}")
+        return UploadResult(False, EXIT_RETRY, f"HTTP request failed: {e}")
 
     return interpret_clublog_response(response.status_code, response.text)
 
@@ -148,26 +155,31 @@ def interpret_clublog_response(status: int, body: str) -> UploadResult:
     """
     message: str = body.strip() or "(no message body)"
 
-    if status == 200:
-        return UploadResult(True, message)
-
-    if status == 400:
-        return UploadResult(False, f"QSO rejected by Club Log: {message}")
-
-    if status == 403:
-        return UploadResult(
-            False,
-            "Access denied by Club Log. Stop uploading and fix the "
-            f"credentials before retrying, or this IP may be blocked: {message}",
-        )
-
-    if status == 500:
-        return UploadResult(
-            False,
-            f"Club Log internal error, QSO not logged (retry later): {message}",
-        )
-
-    return UploadResult(False, f"Unexpected HTTP {status} from Club Log: {message}")
+    match status:
+        case 200:
+            return UploadResult(True, EXIT_OK, message)
+        case 400:
+            return UploadResult(
+                False, EXIT_FAIL, f"QSO rejected by Club Log: {message}"
+            )
+        case 403:
+            return UploadResult(
+                False,
+                EXIT_AUTH,
+                "Access denied by Club Log. Stop uploading and fix the "
+                f"credentials before retrying, or this IP may be blocked: {message}",
+            )
+        case 500:
+            return UploadResult(
+                False,
+                EXIT_AUTH,
+                "Access denied by Club Log. Stop uploading and fix the "
+                f"credentials before retrying, or this IP may be blocked: {message}",
+            )
+        case _:
+            return UploadResult(
+                False, EXIT_FAIL, f"Unexpected HTTP {status} from Club Log: {message}"
+            )
 
 
 def adif_fmt(key: str, value: str) -> str:
@@ -262,5 +274,5 @@ def clublog() -> None:
     else:
         logger.error(f"QSO upload failed: {result.message}")
 
-    if "access denied" in result.message:
+    if result.exit_code == EXIT_AUTH:
         engage_lockout(result.message)
