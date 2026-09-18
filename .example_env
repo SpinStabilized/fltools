@@ -1,7 +1,26 @@
+# The callsign this installation is configured for. The credentials below
+# belong to its logbooks and accounts, and it is what fltools reports in the
+# User-Agent header it sends to QRZ and Club Log.
+#
+# This is NOT the callsign a QSO is logged under. That always comes from
+# FLDigi. If someone else operates, fltools refuses to upload rather than
+# file their contact in this callsign's logbook.
+FLTOOLS_CALL=
+
+# QRZ Logbook API key. Each QRZ logbook serves one callsign and the key
+# selects the logbook, so this must be the key for FLTOOLS_CALL's logbook.
+# Logbook Data -> Logbook Settings -> API Key
 QRZ_KEY=
+
+# Club Log account. Use an Application Password, not your account password.
 CLUBLOG_EMAIL=
 CLUBLOG_PASSWORD=
 CLUBLOG_API_KEY=
-FLTOOLS_CALL=
+
+# Pirate Weather. Units: us, si, ca, uk, uk2
 FLTOOLS_PW_API_KEY=
 FLTOOLS_PW_UNITS=us
+
+# Note: FLTOOLS_HOME and FLTOOLS_ENV are deliberately absent. They decide
+# where this file is found, so they are read from the environment itself and
+# cannot be set here. Run `fltools --paths` to see what they resolved to.

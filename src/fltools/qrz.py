@@ -1,26 +1,31 @@
 """
-fldigi_to_qrz.py
+qrz.py
 
 Intended to be run as an FLDigi <EXEC> macro. FLDigi exports the currently
 selected logbook entry's fields as FLDIGI_LOGBOOK_* environment variables. This
 script reads those, builds a single ADIF QSO record, and submits it to the QRZ
 Logbook API (ACTION=INSERT).
 
+A QRZ logbook serves exactly one callsign, and the API key selects the
+logbook: there is no callsign parameter to redirect an upload with. So if the
+operator is not the callsign this installation is configured for, the QSO
+would land in the wrong logbook and the upload is refused instead.
+
 Exit codes:
     0 - QSO uploaded successfully.
-    1 - Aborted before upload (QRZ_KEY missing, or a required ADIF field
-        is empty), or QRZ rejected the upload (RESULT != OK).
+    1 - Aborted before upload (QRZ_KEY missing, a required ADIF field empty,
+        or the operator is not this installation's callsign), or QRZ rejected
+        the upload (RESULT != OK).
 """
 
 import logging
-import requests
 import sys
-
 from typing import Final
 from urllib.parse import unquote_plus
 
-from fltools import flenv
-from fltools import utils
+import requests
+
+from fltools import flenv, identity, utils
 
 QRZ_API_URL: Final[str] = "https://logbook.qrz.com/api"
 
@@ -43,7 +48,7 @@ def upload_to_qrz(api_key: str, adif_string: str) -> dict[str, str]:
     }
 
     headers: dict[str, str] = {
-        "User-Agent": utils.FLTOOLS_USER_AGENT,
+        "User-Agent": identity.user_agent(),
     }
 
     try:
@@ -113,7 +118,19 @@ def to_adif(fields: dict[str, str]) -> str:
 def qrz() -> None:
     logger.info("Starting upload of new log entry.")
 
-    # Load QRZ_KEY from a .env file next to this script
+    # The API key selects the destination logbook, and that logbook belongs
+    # to one callsign. Uploading someone else's QSO with it would file their
+    # contact in this operator's log, and QRZ gives us no way to redirect it.
+    mismatch: tuple[str, str] | None = identity.operator_mismatch()
+    if mismatch:
+        station, configured = mismatch
+        logger.error(
+            f"Aborting upload: {station} is operating, but this installation "
+            f"is configured for {configured}. The QSO would be filed in the "
+            "wrong QRZ logbook."
+        )
+        sys.exit(1)
+
     qrz_key: str = flenv.get_env("QRZ_KEY")
     if not qrz_key:
         logger.error("QRZ_KEY is not set (check .env). Aborting upload.")
@@ -123,6 +140,10 @@ def qrz() -> None:
     fields: dict[str, str] = {
         adif_name: flvars[env_var] for env_var, adif_name in flenv.FLENV_KEY_MAP.items()
     }
+
+    # FLDigi does not export the station callsign as a logbook field, so it is
+    # added here. QRZ's own API examples include it alongside <call>.
+    fields["station_callsign"] = identity.station_callsign()
 
     missing: list[str] = [
         name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)

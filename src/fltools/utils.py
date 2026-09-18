@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 import logging
 import logging.handlers
-
 from typing import Final
 
 from fltools import paths
@@ -11,8 +9,6 @@ FLTOOLS_LOGGER_ID: Final[str] = "fltools"
 FLTOOLS_LOG_MAX_SIZE: Final[int] = 1_000_000
 FLTOOLS_LOG_COUNT: Final[int] = 3
 FLTOOLS_LOG_ENCODING: Final[str] = "utf-8"
-
-FLTOOLS_USER_AGENT: Final[str] = "fltools/0.1.0 (N3BMC)"
 
 
 def fltools_logger_config(level: int = logging.INFO) -> logging.Logger:

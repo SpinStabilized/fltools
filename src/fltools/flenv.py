@@ -5,7 +5,6 @@ when the EXEC macro is invoked.
 
 import logging
 import os
-
 from typing import Final
 
 from fltools import utils

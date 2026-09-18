@@ -1,21 +1,24 @@
 """
-fldigi_to_clublog.py
+clublog.py
 
 Intended to be run as an FLDigi <EXEC> macro. FLDigi exports the currently
 selected logbook entry's fields as FLDIGI_LOGBOOK_* environment variables. This
 script reads those, builds a single ADIF QSO record, and submits it to the Club
 Log real-time API (realtime.php).
 
-Credentials are read from a .env file next to this script:
+Credentials are read from .env (run `fltools --paths` to see where that is):
 
     CLUBLOG_EMAIL=you@example.com
     CLUBLOG_PASSWORD=your-application-password
     CLUBLOG_API_KEY=your-api-key
-    CLUBLOG_CALLSIGN=KB3BMC
 
-CLUBLOG_CALLSIGN is optional; if omitted the script falls back to FLDigi's
-FLDIGI_MY_CALL environment variable. Use an Application Password rather than
-your account password.
+Use an Application Password rather than your account password.
+
+The callsign the QSO is filed under comes from FLDigi, not from .env, so that
+the log reflects who was actually on the air. Club Log asks that each
+callsign's QSOs stay in that callsign's log, and this installation holds one
+account's credentials, so an upload is refused when the operator is not the
+callsign fltools is configured for (FLTOOLS_CALL).
 
 Lockout on authentication failure:
 
@@ -29,8 +32,9 @@ Lockout on authentication failure:
 
 Exit codes:
     0 - QSO accepted by Club Log (OK, modified, or already known / duplicate).
-    1 - Aborted before upload (missing credentials or a required ADIF field),
-        or Club Log rejected the QSO (HTTP 400).
+    1 - Aborted before upload (missing credentials, a required ADIF field, or
+        the operator is not this installation's callsign), or Club Log
+        rejected the QSO (HTTP 400).
     2 - Transient failure: network error or HTTP 500. Safe to retry later.
     3 - Authentication or form failure (HTTP 403), or a lockout left behind by
         an earlier 403. Do NOT retry until the credentials are corrected.
@@ -39,14 +43,11 @@ Exit codes:
 import datetime
 import logging
 import sys
-
 from typing import Final, NamedTuple
 
 import requests
 
-from fltools import flenv
-from fltools import paths
-from fltools import utils
+from fltools import flenv, identity, paths, utils
 
 logger: logging.Logger = utils.get_fltools_logger()
 
@@ -117,7 +118,7 @@ def upload_to_clublog(
     }
 
     headers: dict[str, str] = {
-        "User-Agent": utils.FLTOOLS_USER_AGENT,
+        "User-Agent": identity.user_agent(),
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
@@ -214,22 +215,32 @@ def clublog() -> None:
         )
         sys.exit(EXIT_AUTH)
 
-    # Load Club Log credentials from a .env file next to this script
+    # This installation holds one account's credentials, and Club Log wants
+    # each callsign's QSOs in that callsign's own log. There is nothing useful
+    # to do with someone else's contact from here.
+    mismatch: tuple[str, str] | None = identity.operator_mismatch()
+    if mismatch:
+        station, configured = mismatch
+        logger.error(
+            f"Aborting upload: {station} is operating, but this installation "
+            f"is configured for {configured}. The QSO would be filed in the "
+            "wrong Club Log log."
+        )
+        sys.exit(EXIT_FAIL)
+
     email: str = flenv.get_env("CLUBLOG_EMAIL").strip()
     password: str = flenv.get_env("CLUBLOG_PASSWORD").strip()
     api_key: str = flenv.get_env("CLUBLOG_API_KEY").strip()
 
-    # The station callsign the QSO is logged under. Fall back to the callsign
-    # FLDigi is configured with if .env doesn't pin one down.
-    callsign: str = (
-        flenv.get_env("FLTOOLS_CALL").strip() or flenv.get_env("FLDIGI_MY_CALL").strip()
-    )
+    # The callsign the QSO is filed under, from FLDigi. No configuration
+    # override: the log has to reflect who was actually on the air.
+    callsign: str = identity.station_callsign()
 
     credentials: dict[str, str] = {
         "CLUBLOG_EMAIL": email,
         "CLUBLOG_PASSWORD": password,
         "CLUBLOG_API_KEY": api_key,
-        "CLUBLOG_CALLSIGN": callsign,
+        "FLDIGI_MY_CALL": callsign,
     }
     missing_creds: list[str] = [name for name, val in credentials.items() if not val]
     if missing_creds:
@@ -243,6 +254,10 @@ def clublog() -> None:
         adif_name: flenv.get_env(env_var).strip()
         for env_var, adif_name in flenv.FLENV_KEY_MAP.items()
     }
+
+    # FLDigi does not export the station callsign as a logbook field, so it is
+    # added here rather than left out of the record.
+    fields["station_callsign"] = callsign
 
     missing: list[str] = [
         name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)

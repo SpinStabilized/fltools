@@ -1,17 +1,16 @@
 """
-local_wx.py - Pull current conditions + active alerts from Pirate Weather
+wx.py - Pull current conditions + active alerts from Pirate Weather
 and print a compact, radio-friendly text block for use with FLDigi macros.
 """
 
 import json
 import logging
+from typing import Final
+
 import maidenhead
 import requests
 
-from typing import Final
-
-from fltools import flenv
-from fltools import utils
+from fltools import flenv, identity, utils
 
 logger: logging.Logger = utils.get_fltools_logger()
 
@@ -28,11 +27,11 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
     exclude = "minutely,hourly,daily,day_night,flags,summary"
     url = f"{BASE_URL}/{api_key}/{lat},{lon}" f"?units={units}&exclude={exclude}"
 
-    headers = {"User-Agent": utils.FLTOOLS_USER_AGENT}
+    headers = {"User-Agent": identity.user_agent()}
     try:
         resp = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
         resp.raise_for_status()
-    except requests.exceptions.HTTPError as e:
+    except requests.exceptions.HTTPError:
         body = resp.text[:200] if resp is not None else ""  # type: ignore
         logger.error(f"HTTP {resp.status_code} from Pirate Weather: {body}")  # type: ignore
     except requests.exceptions.RequestException as e:
@@ -74,7 +73,7 @@ def deg_to_compass(deg: int) -> str:
 
 
 def unit_labels(units: str = "") -> dict:
-    """Return the display unit suffixes for the requested unit system. Defaults to SI units."""
+    """Return display unit suffixes for the requested unit system. Defaults to SI."""
 
     units_dict: dict[str, str] = {
         "temp": "C",
@@ -107,12 +106,10 @@ def format_current(data: dict, units: str) -> str:
     humidity = cur.get("humidity")
     wind_speed = cur.get("windSpeed")
     wind_bearing = cur.get("windBearing")
-    pressure = cur.get("pressure")
-    visibility = cur.get("visibility")
-    uv = cur.get("uvIndex")
+    # visibility = cur.get("visibility")
 
     parts = []
-    parts.append(f"WX")
+    parts.append("WX")
     parts.append(f"{summary}")
     if temp is not None:
         line = f"Temp {temp:.0f}{u['temp']}"

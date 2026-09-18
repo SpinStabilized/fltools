@@ -9,14 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Environment Files
-.env
-.test_env
-# Log Files
-logs/
-
 # IDE
 .vscode/
 
-# Utility files
-clublog_lockout.txt
+# Dev env
+.ruff_cache

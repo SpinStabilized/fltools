@@ -28,7 +28,6 @@ path in the source.
 
 import os
 import pathlib
-
 from typing import Final
 
 import platformdirs

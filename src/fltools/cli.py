@@ -11,18 +11,11 @@ macro verbs.
 import argparse
 import logging
 import sys
-
 from types import TracebackType
 
 import dotenv
 
-from fltools import __version__
-from fltools import clublog
-from fltools import flenv
-from fltools import paths
-from fltools import qrz
-from fltools import utils
-from fltools import wx
+from fltools import __version__, clublog, flenv, paths, qrz, utils, wx
 
 logger: logging.Logger = utils.fltools_logger_config()
 
