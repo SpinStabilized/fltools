@@ -63,7 +63,7 @@ CLUBLOG_URL: Final[str] = "https://clublog.org/realtime.php"
 # working directory. FLDigi invokes <EXEC> macros with an unpredictable cwd,
 # and resolve() follows any symlink to the real location of this file, so the
 # log and the lockout live beside the source no matter how it was launched.
-SCRIPT_DIR: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent
+SCRIPT_DIR: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent.parent
 LOCKOUT_PATH: Final[pathlib.Path] = SCRIPT_DIR / LOCKOUT_FILE
 
 # Exit codes (see module docstring)
