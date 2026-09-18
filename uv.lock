@@ -175,6 +175,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "maidenhead" },
+    { name = "platformdirs" },
     { name = "python-dotenv" },
     { name = "requests" },
 ]
@@ -189,6 +190,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "maidenhead", specifier = ">=1.8.0" },
+    { name = "platformdirs", specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.34.2" },
 ]

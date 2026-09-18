@@ -1,10 +1,25 @@
 #!/usr/bin/env python3
-import argparse
-import dotenv
-import logging
+"""
+Command line entry point for fltools.
 
+Subcommands are the things you put on an FLDigi macro key. Anything that
+exists for the operator rather than for a macro (diagnostics, version
+reporting) is a top-level flag, so that the subcommand list stays a list of
+macro verbs.
+"""
+
+import argparse
+import logging
+import sys
+
+from types import TracebackType
+
+import dotenv
+
+from fltools import __version__
 from fltools import clublog
 from fltools import flenv
+from fltools import paths
 from fltools import qrz
 from fltools import utils
 from fltools import wx
@@ -12,13 +27,46 @@ from fltools import wx
 logger: logging.Logger = utils.fltools_logger_config()
 
 
+def log_uncaught(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_tb: TracebackType | None,
+) -> None:
+    """
+    Route any unhandled exception into the rotating log.
+
+    Without this, a traceback goes to stderr, which under FLDigi means it
+    lands in whatever file the shim redirects to, or nowhere at all. A macro
+    key that silently does nothing is the worst failure mode this tool has.
+    """
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+    logger.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_tb))
+
+
+class PathsAction(argparse.Action):
+    """Print every resolved file location and exit."""
+
+    def __init__(self, option_strings, dest, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None) -> None:  # type: ignore[no-untyped-def]
+        described = paths.describe()
+        width = max(len(label) for label in described)
+        for label, path in described.items():
+            flag = "" if path.exists() else "  (missing)"
+            print(f"{label:<{width}}  {path}{flag}")
+        parser.exit()
+
+
 def handle_qrz(args: argparse.Namespace) -> None:
-    logger.info(f"Exporting to QRZ")
+    logger.info("Exporting to QRZ")
     qrz.qrz()
 
 
 def handle_clublog(args: argparse.Namespace) -> None:
-    logger.info(f"Exporting To ClubLog")
+    logger.info("Exporting To ClubLog")
     clublog.clublog()
 
 
@@ -31,6 +79,20 @@ def handle_wx(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="fltools", description="Extra macro tools for FLDigi"
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show the fltools version and exit",
+    )
+
+    parser.add_argument(
+        "--paths",
+        action=PathsAction,
+        default=argparse.SUPPRESS,
+        help="Show where fltools reads and writes its files, then exit",
     )
 
     subparsers: argparse._SubParsersAction = parser.add_subparsers(
@@ -58,9 +120,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    sys.excepthook = log_uncaught
+
     args: argparse.Namespace = parse_args()
-    # dotenv.load_dotenv(utils.FLTOOLS_SCRIPT_DIR / ".test_env")
-    dotenv.load_dotenv(utils.FLTOOLS_SCRIPT_DIR / ".env")
+
+    # load_dotenv returns False for a missing file rather than raising, so an
+    # unreported miss shows up later as "QRZ_KEY is not set" while a perfectly
+    # good .env sits somewhere else entirely. Run `fltools --paths` to see
+    # where this is looking.
+    if not dotenv.load_dotenv(paths.ENV_FILE):
+        logger.warning(f"No .env loaded from {paths.ENV_FILE}")
+
     args.func(args)
 
 

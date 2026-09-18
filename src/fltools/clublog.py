@@ -38,7 +38,6 @@ Exit codes:
 
 import datetime
 import logging
-import pathlib
 import sys
 
 from typing import Final, NamedTuple
@@ -46,25 +45,15 @@ from typing import Final, NamedTuple
 import requests
 
 from fltools import flenv
+from fltools import paths
 from fltools import utils
 
 logger: logging.Logger = utils.get_fltools_logger()
-
-# Written beside this script when Club Log returns 403, and checked at the
-# start of every run. Its presence blocks all further uploads.
-LOCKOUT_FILE: Final[str] = "clublog_lockout.txt"
 
 # Club Log's real-time single-QSO endpoint. This is NOT for batches: uploading
 # many QSOs back to back through it will get the IP address throttled or
 # firewalled. Use putlogs.php for catch-up uploads of a whole ADIF file.
 CLUBLOG_URL: Final[str] = "https://clublog.org/realtime.php"
-
-# Anchor file paths to the script's own directory rather than the current
-# working directory. FLDigi invokes <EXEC> macros with an unpredictable cwd,
-# and resolve() follows any symlink to the real location of this file, so the
-# log and the lockout live beside the source no matter how it was launched.
-SCRIPT_DIR: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent.parent
-LOCKOUT_PATH: Final[pathlib.Path] = SCRIPT_DIR / LOCKOUT_FILE
 
 # Exit codes (see module docstring)
 EXIT_OK: Final[int] = 0
@@ -98,12 +87,14 @@ def engage_lockout(reason: str) -> None:
     )
 
     try:
-        LOCKOUT_PATH.write_text(note, encoding="utf-8")
+        paths.LOCKOUT_FILE.write_text(note, encoding="utf-8")
     except OSError as e:
-        logger.error(f"Could not write lockout file {LOCKOUT_PATH}: {e}")
+        logger.error(f"Could not write lockout file {paths.LOCKOUT_FILE}: {e}")
         return
 
-    logger.error(f"Uploads disabled. Delete {LOCKOUT_PATH} after fixing credentials.")
+    logger.error(
+        f"Uploads disabled. Delete {paths.LOCKOUT_FILE} after fixing credentials."
+    )
 
 
 def upload_to_clublog(
@@ -216,9 +207,9 @@ def clublog() -> None:
     # An earlier run was rejected by Club Log. Send nothing at all until a
     # human has fixed the credentials and removed the lockout, otherwise every
     # subsequent QSO adds another failed auth attempt against this IP address.
-    if LOCKOUT_PATH.exists():
+    if paths.LOCKOUT_FILE.exists():
         logger.error(
-            f"Upload blocked: lockout in place at {LOCKOUT_PATH}. Fix the "
+            f"Upload blocked: lockout in place at {paths.LOCKOUT_FILE}. Fix the "
             "Club Log credentials in .env, then delete that file."
         )
         sys.exit(EXIT_AUTH)

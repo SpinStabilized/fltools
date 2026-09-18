@@ -1,50 +1,90 @@
 #!/usr/bin/env bash
 #
-# fltools - shim that runs the uv-managed `fltools` CLI from inside
-# FLDigi's <EXEC> macro child process.
+# fltools - shim that runs the installed `fltools` CLI from inside FLDigi's
+# <EXEC> macro child process.
 #
 # INSTALL
-#   Save this file as ~/.fldigi/scripts/fltools and chmod +x it.
-#   Fldigi prepends ~/.fldigi/scripts to PATH before running EXEC
-#   children, so macros can just say:
+#   Install the tool itself first:
 #
-#       <EXEC>fltools logqso</EXEC>
+#       uv tool install /path/to/fltools        # or: uv tool install --editable .
 #
-#   No absolute path needed, and it'll also show up as its own
-#   entry in the macro browser's exec-script list.
+#   Then save this file as ~/.fldigi/scripts/fltools and chmod +x it.
+#   FLDigi prepends ~/.fldigi/scripts to PATH before running EXEC children,
+#   so macros can just say:
+#
+#       <EXEC>fltools qrz</EXEC>
+#
+#   No absolute path needed, and it shows up as its own entry in the macro
+#   browser's exec-script list.
 #
 # WHY THIS EXISTS
-#   The <EXEC> child does NOT get a login/interactive shell - it does
-#   not source .bashrc/.profile - so `uv` may not be on PATH even
-#   though it works fine in your terminal. This script hunts for it.
-#   It also keeps stdout untouched: fldigi captures the child's
-#   stdout and appends it to the TX buffer (re-parsing it for macro
-#   tags), so anything a subcommand prints on stdout is what gets
-#   sent over the air. stderr is redirected to a log file instead,
-#   so uv noise / Python tracebacks never end up on the air.
+#   The <EXEC> child does NOT get a login or interactive shell. It does not
+#   source .bashrc or .profile, so ~/.local/bin is almost certainly missing
+#   from its PATH even though `fltools` runs fine in your terminal. This
+#   script finds the real executable by absolute path instead of trusting
+#   PATH.
+#
+#   It also keeps stdout untouched: FLDigi captures the child's stdout and
+#   appends it to the TX buffer, re-parsing it for macro tags, so anything a
+#   subcommand prints on stdout is what goes over the air. Only `wx` prints.
+#   stderr is redirected to a file so that a launch failure never lands on
+#   the air.
+#
+# WHERE THE FILES LIVE
+#   fltools resolves its own config, log, and state locations using platform
+#   convention (~/.config/fltools and friends on Linux, ~/Library/... on
+#   macOS). Run `fltools --paths` in a terminal to see them.
+#
+#   This shim deliberately does NOT set FLTOOLS_HOME. Do not point that at
+#   anything inside ~/.fldigi: deleting that directory is a routine FLDigi
+#   troubleshooting step, and your QRZ and Club Log credentials should not
+#   evaporate with it.
 #
 # FLDIGI_* ENV VARS
-#   Fldigi exports FLDIGI_MY_CALL, FLDIGI_LOG_CALL, FLDIGI_FREQUENCY,
-#   FLDIGI_LOG_LOCATOR, FLDIGI_MODEM, FLDIGI_PID, etc. into this
-#   process already. They're inherited automatically by `uv run` and
-#   the Python process below - nothing extra to do for that part.
-#   Your Python code just reads os.environ["FLDIGI_..."].
+#   FLDigi exports FLDIGI_MY_CALL, FLDIGI_LOG_CALL, FLDIGI_FREQUENCY,
+#   FLDIGI_MY_LOCATOR, FLDIGI_MODEM, FLDIGI_PID, the FLDIGI_LOGBOOK_* fields
+#   for the selected entry, and more. They are inherited automatically by the
+#   process below, so nothing extra is needed here.
 
-set -o errexit # Exit on command failure
-set -o nounset # Script fails on unset variable
+set -o errexit  # Exit on command failure
+set -o nounset  # Script fails on unset variable
 set -o pipefail # Script fails on any command in a pipe failing
 
-PROJECT_DIR=$HOME/source/fltools
+# Only startup failures reach this file. Once the CLI is running, Python
+# exceptions go to the rotating log instead (see `fltools --paths`).
+LOG_FILE="${TMPDIR:-/tmp}/fltools-startup.err"
 
-LOG_FILE=$HOME/source/fltools/logs/fltools.err.log
+# Absolute paths only. Do NOT change this to `exec fltools "$@"` on the
+# assumption that PATH will sort it out: FLDigi puts ~/.fldigi/scripts first
+# on PATH and this shim is named `fltools` too, so a PATH lookup would find
+# this file and exec itself forever.
+#
+# Candidate locations for the console script installed by `uv tool install`.
+# Set FLTOOLS_BIN in the environment to skip the search entirely.
+CANDIDATES=(
+  "${FLTOOLS_BIN:-}"
+  "$HOME/.local/bin/fltools"
+  "${UV_TOOL_BIN_DIR:-}/fltools"
+  "/usr/local/bin/fltools"
+  "/opt/homebrew/bin/fltools"
+)
 
-UV_BIN=/opt/homebrew/bin/uv
+FLTOOLS_EXE=""
+for candidate in "${CANDIDATES[@]}"; do
+  [ -n "$candidate" ] || continue
+  [ -x "$candidate" ] || continue
+  FLTOOLS_EXE="$candidate"
+  break
+done
 
-mkdir -p "$(dirname "$LOG_FILE")"
+if [ -z "$FLTOOLS_EXE" ]; then
+  {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') fltools shim: executable not found."
+    echo "  Looked in: ${CANDIDATES[*]}"
+    echo "  Install it with: uv tool install /path/to/fltools"
+    echo "  Or set FLTOOLS_BIN to its absolute path."
+  } >>"$LOG_FILE"
+  exit 127
+fi
 
-# --no-sync skips uv's per-run "is the venv up to date" check, which
-# keeps macro-button response snappy mid-QSO. Run `uv sync --project
-# "$PROJECT_DIR"` by hand after you change dependencies. Drop --no-sync
-# below while you're still actively developing the tool.
-
-exec "$UV_BIN" run --no-sync "$PROJECT_DIR"/src/fltools.py "$@" 2>>"$LOG_FILE"
+exec "$FLTOOLS_EXE" "$@" 2>>"$LOG_FILE"
