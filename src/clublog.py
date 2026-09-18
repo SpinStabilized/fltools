@@ -25,8 +25,7 @@ Lockout on authentication failure:
     until that file is removed. This matters: repeated failed credentials cause
     Club Log to firewall the originating IP address automatically.
 
-    To resume after fixing the credentials, either delete the lockout file or
-    run this script with --clear-lockout.
+    To resume after fixing the credentials, delete the lockout file.
 
 Exit codes:
     0 - QSO accepted by Club Log (OK, modified, or already known / duplicate).
@@ -40,6 +39,7 @@ Exit codes:
 import datetime
 import logging
 import pathlib
+import sys
 
 from typing import Final, NamedTuple
 
@@ -224,6 +224,7 @@ def clublog() -> None:
             "Club Log credentials in .env, then delete that file (or run this "
             "script with --clear-lockout)."
         )
+        sys.exit(EXIT_AUTH)
 
     # Load Club Log credentials from a .env file next to this script
     email: str = flenv.get_env("CLUBLOG_EMAIL").strip()
@@ -248,6 +249,7 @@ def clublog() -> None:
             "Aborting upload: missing credential(s) in .env: "
             f"{', '.join(missing_creds)}"
         )
+        sys.exit(EXIT_FAIL)
 
     fields: dict[str, str] = {
         adif_name: flenv.get_env(env_var).strip()
@@ -261,6 +263,7 @@ def clublog() -> None:
         logger.error(
             f"Aborting upload: missing required field(s): {', '.join(missing)}"
         )
+        sys.exit(EXIT_FAIL)
 
     adif_record: str = to_adif(fields)
     logger.debug(f"ADIF record: {adif_record}")
@@ -273,6 +276,6 @@ def clublog() -> None:
         logger.info(f"QSO with {fields['call']} accepted by Club Log: {result.message}")
     else:
         logger.error(f"QSO upload failed: {result.message}")
-
-    if result.exit_code == EXIT_AUTH:
-        engage_lockout(result.message)
+        if result.exit_code == EXIT_AUTH:
+            engage_lockout(result.message)
+        sys.exit(result.exit_code)
