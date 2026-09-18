@@ -19,8 +19,8 @@ import sys
 from typing import Final
 from urllib.parse import unquote_plus
 
-import flenv
-import utils
+from fltools import flenv
+from fltools import utils
 
 QRZ_API_URL: Final[str] = "https://logbook.qrz.com/api"
 

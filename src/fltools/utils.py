@@ -5,6 +5,8 @@ import pathlib
 
 from typing import Final
 
+from fltools import __version__
+
 # Anchor file paths to the script's own directory rather than the current
 # working directory. FLDigi invokes <EXEC> macros with an unpredictable cwd,
 # and resolve() follows any symlink to the real location of this file, so the
@@ -21,7 +23,8 @@ FLTOOLS_LOG_MAX_SIZE: Final[int] = 1_000_000
 FLTOOLS_LOG_COUNT: Final[int] = 3
 FLTOOLS_LOG_ENCODING: Final[str] = "utf-8"
 
-FLTOOLS_USER_AGENT: Final[str] = 'fltools/0.1.0 (N3BMC)'
+FLTOOLS_USER_AGENT: Final[str] = f"fltools/{__version__} (N3BMC)"
+
 
 def fltools_logger_config(level: int = logging.INFO) -> logging.Logger:
     """Configure the fltools' logger

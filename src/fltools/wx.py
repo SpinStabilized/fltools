@@ -10,8 +10,8 @@ import requests
 
 from typing import Final
 
-import flenv
-import utils
+from fltools import flenv
+from fltools import utils
 
 logger: logging.Logger = utils.get_fltools_logger()
 

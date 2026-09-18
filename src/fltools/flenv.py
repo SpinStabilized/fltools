@@ -5,9 +5,10 @@ when the EXEC macro is invoked.
 
 import logging
 import os
-import utils
 
 from typing import Final
+
+from fltools import utils
 
 logger: logging.Logger = utils.get_fltools_logger()
 
