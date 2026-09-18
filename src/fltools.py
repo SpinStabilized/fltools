@@ -3,7 +3,9 @@ import argparse
 import dotenv
 import logging
 
+import clublog
 import flenv
+import qrz
 import utils
 import wx
 
@@ -11,16 +13,18 @@ logger: logging.Logger = utils.fltools_logger_config()
 
 
 def handle_qrz(args: argparse.Namespace) -> None:
-    logging.info(f"Exporting to QRZ")
+    logger.info(f"Exporting to QRZ")
+    qrz.qrz()
 
 
 def handle_clublog(args: argparse.Namespace) -> None:
-    logging.info(f"Exporting To ClubLog")
+    logger.info(f"Exporting To ClubLog")
+    clublog.clublog()
 
 
 def handle_wx(args: argparse.Namespace) -> None:
     my_grid: str = flenv.get_env("FLDIGI_MY_LOCATOR")
-    logging.info(f"Getting Weather for {my_grid}")
+    logger.info(f"Getting Weather for {my_grid}")
     wx.wx()
 
 
@@ -55,7 +59,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args: argparse.Namespace = parse_args()
-    dotenv.load_dotenv(utils.FLTOOLS_SCRIPT_DIR / ".test_env")
+    # dotenv.load_dotenv(utils.FLTOOLS_SCRIPT_DIR / ".test_env")
+    dotenv.load_dotenv(utils.FLTOOLS_SCRIPT_DIR / ".env")
     args.func(args)
 
 

@@ -13,15 +13,18 @@ Exit codes:
 """
 
 import logging
-import os
+import requests
 import sys
 
-import requests
-
-from dotenv import load_dotenv
+from typing import Final
 from urllib.parse import unquote_plus
 
 import flenv
+import utils
+
+QRZ_API_URL: Final[str] = "https://logbook.qrz.com/api"
+
+logger: logging.Logger = utils.get_fltools_logger()
 
 
 def upload_to_qrz(api_key: str, adif_string: str) -> dict[str, str]:
@@ -30,25 +33,24 @@ def upload_to_qrz(api_key: str, adif_string: str) -> dict[str, str]:
 
     Returns a dict with at least a "RESULT" key ("OK" or "FAIL").
     """
-    url: str = "https://logbook.qrz.com/api"
 
     # Form-encoded payload parameters required by the QRZ Logbook API.
     payload: dict[str, str | None] = {
         "KEY": api_key,
         "ACTION": "INSERT",
         "ADIF": adif_string,
-        "OPTION": "REPLACE"
+        "OPTION": "REPLACE",
     }
 
     headers: dict[str, str] = {
-        'User-Agent': 'fldigi_to_qrz/0.1.0 (N3BMC)',
+        "User-Agent": utils.FLTOOLS_USER_AGENT,
     }
 
     try:
         # Send the POST request to QRZ.
         response: requests.Response = requests.post(
-            url, data=payload, timeout=10, headers=headers
-            )
+            QRZ_API_URL, data=payload, timeout=10, headers=headers
+        )
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         return {"RESULT": "FAIL", "REASON": f"HTTP request failed: {e}"}
@@ -72,7 +74,8 @@ def parse_qrz_response(response_text: str) -> dict[str, str]:
     if "RESULT" not in parsed:
         return {
             "RESULT": "FAIL",
-            "REASON": f"Unrecognized response from QRZ: {response_text!r}",}
+            "REASON": f"Unrecognized response from QRZ: {response_text!r}",
+        }
 
     return parsed
 
@@ -88,14 +91,14 @@ def adif_fmt(key: str, value: str) -> str:
 
     # ADIF TIME_ON / TIME_OFF fields must be digits only (HHMM or
     # HHMMSS), but FLDigi supplies them as "HH:MM:SS" -- strip the colons.
-    if key in ['time_off', 'time_on']:
+    if key in ["time_off", "time_on"]:
         clean_value = clean_value.replace(":", "")
 
     value_length: int = len(clean_value)
     if value_length > 0:
-        return f'<{key}:{value_length}>{clean_value}'
+        return f"<{key}:{value_length}>{clean_value}"
     else:
-        return ''
+        return ""
 
 
 def to_adif(fields: dict[str, str]) -> str:
@@ -104,36 +107,39 @@ def to_adif(fields: dict[str, str]) -> str:
     (as returned by get_field_values), terminated with <eor>.
     """
     adif_list = [adif_fmt(name, value) for name, value in fields.items()]
-    return ''.join(adif_list) + '<eor>'
+    return "".join(adif_list) + "<eor>"
 
 
 def qrz() -> None:
-    logging.info('Starting upload of new log entry.')
+    logger.info("Starting upload of new log entry.")
 
     # Load QRZ_KEY from a .env file next to this script
-    qrz_key: str = os.getenv("QRZ_KEY", "")
+    qrz_key: str = flenv.get_env("QRZ_KEY")
     if not qrz_key:
-        logging.error("QRZ_KEY is not set (check .env). Aborting upload.")
+        logger.error("QRZ_KEY is not set (check .env). Aborting upload.")
         sys.exit(1)
 
-    flvars: dict[str, str] = flenv.get_env()
+    flvars: dict[str, str] = flenv.get_env_all()
     fields: dict[str, str] = {
-        adif_name: flvars[env_var]
-        for env_var, adif_name in flenv.FLENV_KEY_MAP.items()
+        adif_name: flvars[env_var] for env_var, adif_name in flenv.FLENV_KEY_MAP.items()
     }
 
-    missing: list[str] = [name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)]
+    missing: list[str] = [
+        name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)
+    ]
     if missing:
-        logging.error(f"Aborting upload: missing required field(s): {', '.join(missing)}")
+        logger.error(
+            f"Aborting upload: missing required field(s): {', '.join(missing)}"
+        )
         sys.exit(1)
 
     adif_record: str = to_adif(fields)
-    logging.debug(f"ADIF record: {adif_record}")
+    logger.debug(f"ADIF record: {adif_record}")
 
     result: dict[str, str] = upload_to_qrz(qrz_key, adif_record)
 
     if result.get("RESULT") == "OK":
-        logging.info(f"QSO uploaded successfully (LOGID={result.get('LOGID', '?')}).")
+        logger.info(f"QSO uploaded successfully (LOGID={result.get('LOGID', '?')}).")
     else:
-        logging.error(f"QSO upload failed: {result}")
+        logger.error(f"QSO upload failed: {result}")
         sys.exit(1)

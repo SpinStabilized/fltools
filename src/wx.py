@@ -19,7 +19,6 @@ BASE_URL: Final[str] = "https://api.pirateweather.net/forecast"
 TIMEOUT_SECONDS: Final[int] = 10
 DEFAULT_LAT: Final[float] = 39.2037
 DEFAULT_LON: Final[float] = -76.8610
-AGENT_ID: Final[str] = "fltools/1.0"
 
 
 def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
@@ -29,7 +28,7 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
     exclude = "minutely,hourly,daily,day_night,flags,summary"
     url = f"{BASE_URL}/{api_key}/{lat},{lon}" f"?units={units}&exclude={exclude}"
 
-    headers = {"User-Agent": AGENT_ID}
+    headers = {"User-Agent": utils.FLTOOLS_USER_AGENT}
     try:
         resp = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
         resp.raise_for_status()

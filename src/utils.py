@@ -15,12 +15,13 @@ FLTOOLS_LOGGER_ID: Final[str] = "fltools"
 
 FLTOOLS_LOG_DIR: Final[pathlib.Path] = pathlib.Path(FLTOOLS_SCRIPT_DIR / "logs")
 FLTOOLS_LOG_FILE: Final[pathlib.Path] = pathlib.Path(
-    FLTOOLS_LOG_DIR / FLTOOLS_LOGGER_ID
+    FLTOOLS_LOG_DIR / f"{FLTOOLS_LOGGER_ID}.log"
 )
 FLTOOLS_LOG_MAX_SIZE: Final[int] = 1_000_000
 FLTOOLS_LOG_COUNT: Final[int] = 3
 FLTOOLS_LOG_ENCODING: Final[str] = "utf-8"
 
+FLTOOLS_USER_AGENT: Final[str] = 'fltools/0.1.0 (N3BMC)'
 
 def fltools_logger_config(level: int = logging.INFO) -> logging.Logger:
     """Configure the fltools' logger

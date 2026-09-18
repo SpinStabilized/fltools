@@ -36,7 +36,7 @@ set -o pipefail # Script fails on any command in a pipe failing
 
 PROJECT_DIR=$HOME/source/fltools
 
-LOG_FILE=$HOME/source/fltoolss/logs/fltools.err.log
+LOG_FILE=$HOME/source/fltools/logs/fltools.err.log
 
 UV_BIN=/opt/homebrew/bin/uv
 
@@ -46,9 +46,5 @@ mkdir -p "$(dirname "$LOG_FILE")"
 # keeps macro-button response snappy mid-QSO. Run `uv sync --project
 # "$PROJECT_DIR"` by hand after you change dependencies. Drop --no-sync
 # below while you're still actively developing the tool.
-#
-# `fltools` here is resolved as the console-script entry point defined
-# in pyproject.toml's [project.scripts]. If you haven't wired that up
-# yet, swap the last line for: "$UV_BIN" run --project "$PROJECT_DIR" \
-#   --no-sync python -m fltools "$@" 2>>"$LOG_FILE"
-exec "$UV_BIN" run --project "$PROJECT_DIR" --no-sync src/fltools.py "$@" 2>>"$LOG_FILE"
+
+exec "$UV_BIN" run --no-sync "$PROJECT_DIR"/src/fltools.py "$@" 2>>"$LOG_FILE"

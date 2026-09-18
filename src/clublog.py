@@ -39,100 +39,38 @@ Exit codes:
 
 import datetime
 import logging
-import logging.handlers
-import os
 import pathlib
-import sys
 
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 import requests
 
-from dotenv import load_dotenv
+import flenv
+import utils
 
-# Logging Parameters
-LOG_FILE: str = "fldigi_to_clublog.log"
-LOG_MAX_SIZE: int = 1_000_000
-LOG_COUNT: int = 3
-LOG_ENCODING: str = "utf-8"
+logger: logging.Logger = utils.get_fltools_logger()
 
 # Written beside this script when Club Log returns 403, and checked at the
 # start of every run. Its presence blocks all further uploads.
-LOCKOUT_FILE: str = "clublog_lockout.txt"
+LOCKOUT_FILE: Final[str] = "clublog_lockout.txt"
 
 # Club Log's real-time single-QSO endpoint. This is NOT for batches: uploading
 # many QSOs back to back through it will get the IP address throttled or
 # firewalled. Use putlogs.php for catch-up uploads of a whole ADIF file.
-CLUBLOG_URL: str = "https://clublog.org/realtime.php"
-
-# Exit codes (see module docstring)
-EXIT_OK: int = 0
-EXIT_FAIL: int = 1
-EXIT_RETRY: int = 2
-EXIT_AUTH: int = 3
+CLUBLOG_URL: Final[str] = "https://clublog.org/realtime.php"
 
 # Anchor file paths to the script's own directory rather than the current
 # working directory. FLDigi invokes <EXEC> macros with an unpredictable cwd,
 # and resolve() follows any symlink to the real location of this file, so the
 # log and the lockout live beside the source no matter how it was launched.
-SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
-LOCKOUT_PATH = SCRIPT_DIR / LOCKOUT_FILE
-
-# Configure logging to a rotating file (caps log at ~1 MB, keeping up to 3
-# old copies) so it doesn't grow too big over all QSOs being logged.
-logging.basicConfig(
-    handlers=[
-        logging.handlers.RotatingFileHandler(
-            SCRIPT_DIR / LOG_FILE,
-            maxBytes=LOG_MAX_SIZE, backupCount=LOG_COUNT, encoding=LOG_ENCODING
-        )
-    ],
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Maps the FLDigi macro environment variable names to the ADIF field names
-# Club Log's ADIF parser understands.
-key_map: dict[str, str] = {
-    'FLDIGI_LOGBOOK_BAND': 'band',
-    'FLDIGI_LOGBOOK_CALL': 'call',
-    'FLDIGI_LOGBOOK_CONTINENT': 'cont',
-    'FLDIGI_LOGBOOK_COUNTRY': 'country',
-    'FLDIGI_LOGBOOK_COUNTY': 'cnty',
-    'FLDIGI_LOGBOOK_CQZ': 'cqz',
-    'FLDIGI_LOGBOOK_DATE_OFF': 'qso_date_off',
-    'FLDIGI_LOGBOOK_DATE': 'qso_date',
-    'FLDIGI_LOGBOOK_DXCC': 'dxcc',
-    'FLDIGI_LOGBOOK_FREQUENCY': 'freq',
-    'FLDIGI_LOGBOOK_IOTA': 'iota',
-    'FLDIGI_LOGBOOK_ITUZ': 'ituz',
-    'FLDIGI_LOGBOOK_LOCATOR': 'gridsquare',
-    'FLDIGI_LOGBOOK_MODE': 'mode',
-    'FLDIGI_LOGBOOK_NAME': 'name',
-    'FLDIGI_LOGBOOK_NOTES': 'notes',
-    'FLDIGI_LOGBOOK_QSL_VIA': 'qsl_via',
-    'FLDIGI_LOGBOOK_QTH': 'qth',
-    'FLDIGI_LOGBOOK_RST_IN': 'rst_rcvd',
-    'FLDIGI_LOGBOOK_RST_OUT': 'rst_sent',
-    'FLDIGI_LOGBOOK_SERNO_IN': 'srx',
-    'FLDIGI_LOGBOOK_SERNO_OUT': 'stx',
-    'FLDIGI_LOGBOOK_STATE': 'state',
-    'FLDIGI_LOGBOOK_TIME_OFF': 'time_off',
-    'FLDIGI_LOGBOOK_TIME_ON': 'time_on',
-    'FLDIGI_LOGBOOK_TX_PWR': 'tx_pwr',
-    'FLDIGI_LOGBOOK_VE_PROV': 've_prov',
-}
-
-# ADIF fields needed at minimum for Club Log to place the QSO correctly.
-REQUIRED_ADIF_FIELDS: list[str] = [
-    'call', 'qso_date', 'time_on', 'band', 'mode',
-    ]
+SCRIPT_DIR: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent
+LOCKOUT_PATH: Final[pathlib.Path] = SCRIPT_DIR / LOCKOUT_FILE
 
 
 class UploadResult(NamedTuple):
     """Outcome of a single real-time upload attempt."""
+
     accepted: bool
-    exit_code: int
     message: str
 
 
@@ -156,29 +94,10 @@ def engage_lockout(reason: str) -> None:
     try:
         LOCKOUT_PATH.write_text(note, encoding="utf-8")
     except OSError as e:
-        logging.error(f"Could not write lockout file {LOCKOUT_PATH}: {e}")
+        logger.error(f"Could not write lockout file {LOCKOUT_PATH}: {e}")
         return
 
-    logging.error(
-        f"Uploads disabled. Delete {LOCKOUT_PATH} after fixing credentials."
-    )
-
-
-def clear_lockout() -> int:
-    """
-    Remove the lockout file, if present. Returns a process exit code.
-    """
-    try:
-        LOCKOUT_PATH.unlink()
-    except FileNotFoundError:
-        logging.info(f"No lockout in place at {LOCKOUT_PATH}; nothing to clear.")
-        return EXIT_OK
-    except OSError as e:
-        logging.error(f"Could not remove lockout file {LOCKOUT_PATH}: {e}")
-        return EXIT_FAIL
-
-    logging.info(f"Lockout cleared ({LOCKOUT_PATH}). Uploads re-enabled.")
-    return EXIT_OK
+    logger.error(f"Uploads disabled. Delete {LOCKOUT_PATH} after fixing credentials.")
 
 
 def upload_to_clublog(
@@ -201,8 +120,8 @@ def upload_to_clublog(
     }
 
     headers: dict[str, str] = {
-        'User-Agent': 'fldigi_to_clublog/0.1.0 (KB3BMC)',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        "User-Agent": utils.FLTOOLS_USER_AGENT,
+        "Content-Type": "application/x-www-form-urlencoded",
     }
 
     try:
@@ -211,9 +130,9 @@ def upload_to_clublog(
         # ampersands come through intact.
         response: requests.Response = requests.post(
             CLUBLOG_URL, data=payload, timeout=10, headers=headers
-            )
+        )
     except requests.exceptions.RequestException as e:
-        return UploadResult(False, EXIT_RETRY, f"HTTP request failed: {e}")
+        return UploadResult(False, f"HTTP request failed: {e}")
 
     return interpret_clublog_response(response.status_code, response.text)
 
@@ -230,27 +149,25 @@ def interpret_clublog_response(status: int, body: str) -> UploadResult:
     message: str = body.strip() or "(no message body)"
 
     if status == 200:
-        return UploadResult(True, EXIT_OK, message)
+        return UploadResult(True, message)
 
     if status == 400:
-        return UploadResult(False, EXIT_FAIL, f"QSO rejected by Club Log: {message}")
+        return UploadResult(False, f"QSO rejected by Club Log: {message}")
 
     if status == 403:
         return UploadResult(
-            False, EXIT_AUTH,
+            False,
             "Access denied by Club Log. Stop uploading and fix the "
-            f"credentials before retrying, or this IP may be blocked: {message}"
+            f"credentials before retrying, or this IP may be blocked: {message}",
         )
 
     if status == 500:
         return UploadResult(
-            False, EXIT_RETRY,
-            f"Club Log internal error, QSO not logged (retry later): {message}"
+            False,
+            f"Club Log internal error, QSO not logged (retry later): {message}",
         )
 
-    return UploadResult(
-        False, EXIT_FAIL, f"Unexpected HTTP {status} from Club Log: {message}"
-    )
+    return UploadResult(False, f"Unexpected HTTP {status} from Club Log: {message}")
 
 
 def adif_fmt(key: str, value: str) -> str:
@@ -264,14 +181,14 @@ def adif_fmt(key: str, value: str) -> str:
 
     # ADIF TIME_ON / TIME_OFF fields must be digits only (HHMM or
     # HHMMSS), but FLDigi supplies them as "HH:MM:SS" -- strip the colons.
-    if key in ['time_off', 'time_on']:
+    if key in ["time_off", "time_on"]:
         clean_value = clean_value.replace(":", "")
 
     value_length: int = len(clean_value)
     if value_length > 0:
-        return f'<{key}:{value_length}>{clean_value}'
+        return f"<{key}:{value_length}>{clean_value}"
     else:
-        return ''
+        return ""
 
 
 def to_adif(fields: dict[str, str]) -> str:
@@ -280,37 +197,31 @@ def to_adif(fields: dict[str, str]) -> str:
     terminated with <eor>.
     """
     adif_list = [adif_fmt(name, value) for name, value in fields.items()]
-    return ''.join(adif_list) + '<eor>'
+    return "".join(adif_list) + "<eor>"
 
 
-def main() -> None:
-    if "--clear-lockout" in sys.argv[1:]:
-        sys.exit(clear_lockout())
-
-    logging.info('Starting upload of new log entry.')
+def clublog() -> None:
+    logger.info("Starting upload of new log entry.")
 
     # An earlier run was rejected by Club Log. Send nothing at all until a
     # human has fixed the credentials and removed the lockout, otherwise every
     # subsequent QSO adds another failed auth attempt against this IP address.
     if LOCKOUT_PATH.exists():
-        logging.error(
+        logger.error(
             f"Upload blocked: lockout in place at {LOCKOUT_PATH}. Fix the "
             "Club Log credentials in .env, then delete that file (or run this "
             "script with --clear-lockout)."
         )
-        sys.exit(EXIT_AUTH)
 
     # Load Club Log credentials from a .env file next to this script
-    load_dotenv(SCRIPT_DIR / '.env')
-    email: str = os.getenv("CLUBLOG_EMAIL", "").strip()
-    password: str = os.getenv("CLUBLOG_PASSWORD", "").strip()
-    api_key: str = os.getenv("CLUBLOG_API_KEY", "").strip()
+    email: str = flenv.get_env("CLUBLOG_EMAIL").strip()
+    password: str = flenv.get_env("CLUBLOG_PASSWORD").strip()
+    api_key: str = flenv.get_env("CLUBLOG_API_KEY").strip()
 
     # The station callsign the QSO is logged under. Fall back to the callsign
     # FLDigi is configured with if .env doesn't pin one down.
     callsign: str = (
-        os.getenv("CLUBLOG_CALLSIGN", "").strip()
-        or os.getenv("FLDIGI_MY_CALL", "").strip()
+        flenv.get_env("FLTOOLS_CALL").strip() or flenv.get_env("FLDIGI_MY_CALL").strip()
     )
 
     credentials: dict[str, str] = {
@@ -321,42 +232,35 @@ def main() -> None:
     }
     missing_creds: list[str] = [name for name, val in credentials.items() if not val]
     if missing_creds:
-        logging.error(
+        logger.error(
             "Aborting upload: missing credential(s) in .env: "
             f"{', '.join(missing_creds)}"
         )
-        sys.exit(EXIT_FAIL)
 
     fields: dict[str, str] = {
-        adif_name: os.getenv(env_var, "").strip()
-        for env_var, adif_name in key_map.items()
+        adif_name: flenv.get_env(env_var).strip()
+        for env_var, adif_name in flenv.FLENV_KEY_MAP.items()
     }
 
-    missing: list[str] = [name for name in REQUIRED_ADIF_FIELDS if not fields.get(name)]
+    missing: list[str] = [
+        name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)
+    ]
     if missing:
-        logging.error(f"Aborting upload: missing required field(s): {', '.join(missing)}")
-        sys.exit(EXIT_FAIL)
+        logger.error(
+            f"Aborting upload: missing required field(s): {', '.join(missing)}"
+        )
 
     adif_record: str = to_adif(fields)
-    logging.debug(f"ADIF record: {adif_record}")
+    logger.debug(f"ADIF record: {adif_record}")
 
     result: UploadResult = upload_to_clublog(
         email, password, api_key, callsign, adif_record
     )
 
     if result.accepted:
-        logging.info(
-            f"QSO with {fields['call']} accepted by Club Log: {result.message}"
-        )
-        sys.exit(EXIT_OK)
+        logger.info(f"QSO with {fields['call']} accepted by Club Log: {result.message}")
+    else:
+        logger.error(f"QSO upload failed: {result.message}")
 
-    logging.error(f"QSO upload failed: {result.message}")
-
-    if result.exit_code == EXIT_AUTH:
+    if "access denied" in result.message:
         engage_lockout(result.message)
-
-    sys.exit(result.exit_code)
-
-
-if __name__ == "__main__":
-    main()
