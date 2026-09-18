@@ -94,8 +94,7 @@ def engage_lockout(reason: str) -> None:
         f"Time: {stamp}\n"
         f"Club Log said: {reason}\n\n"
         "Fix CLUBLOG_EMAIL, CLUBLOG_PASSWORD, CLUBLOG_API_KEY or "
-        "CLUBLOG_CALLSIGN in .env, then delete this file (or run the script\n"
-        "with --clear-lockout) to resume uploading.\n"
+        "CLUBLOG_CALLSIGN in .env, then delete this file to resume uploading.\n"
     )
 
     try:
@@ -172,9 +171,8 @@ def interpret_clublog_response(status: int, body: str) -> UploadResult:
         case 500:
             return UploadResult(
                 False,
-                EXIT_AUTH,
-                "Access denied by Club Log. Stop uploading and fix the "
-                f"credentials before retrying, or this IP may be blocked: {message}",
+                EXIT_RETRY,
+                f"Club Log internal error, QSO not logged (retry later): {message}",
             )
         case _:
             return UploadResult(
@@ -221,8 +219,7 @@ def clublog() -> None:
     if LOCKOUT_PATH.exists():
         logger.error(
             f"Upload blocked: lockout in place at {LOCKOUT_PATH}. Fix the "
-            "Club Log credentials in .env, then delete that file (or run this "
-            "script with --clear-lockout)."
+            "Club Log credentials in .env, then delete that file."
         )
         sys.exit(EXIT_AUTH)
 
