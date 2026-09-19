@@ -14,3 +14,8 @@ wheels/
 
 # Dev env
 .ruff_cache
+
+# env files...just to be safe
+# Environment Files
+.env
+.test_env
