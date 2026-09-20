@@ -156,7 +156,7 @@ def wx():
 
     if not api_key or api_key == "":
         logger.error(
-            "Pirate Weather API key not set. Edit pirate_wx.py or set PW_API_KEY."
+            "Pirate Weather API key not set. Edit wx.py or set FLTOOLS_PW_API_KEY."
         )
 
     try:
