@@ -146,7 +146,7 @@ def qrz() -> None:
     fields["station_callsign"] = identity.station_callsign()
 
     missing: list[str] = [
-        name for name in flenv.QRZ_REQUIRED_ADIF_FIELDS if not fields.get(name)
+        name for name in flenv.REQUIRED_ADIF_FIELDS if not fields.get(name)
     ]
     if missing:
         logger.error(

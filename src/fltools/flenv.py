@@ -48,7 +48,7 @@ FLENV_KEY_MAP: Final[dict[str, str]] = {
 }
 
 # ADIF fields QRZ's logbook API needs at minimum to accept a QSO record.
-QRZ_REQUIRED_ADIF_FIELDS: Final[list[str]] = [
+REQUIRED_ADIF_FIELDS: Final[list[str]] = [
     "call",
     "qso_date",
     "time_on",
