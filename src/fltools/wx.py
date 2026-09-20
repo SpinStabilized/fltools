@@ -11,6 +11,7 @@ import maidenhead
 import requests
 
 from fltools import flenv, identity, utils
+from typing import Any
 
 logger: logging.Logger = utils.get_fltools_logger()
 
@@ -20,19 +21,19 @@ DEFAULT_LAT: Final[float] = 39.2037
 DEFAULT_LON: Final[float] = -76.8610
 
 
-def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict:
+def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict[str, Any]:
     """Request only the 'currently' and 'alerts' blocks from Pirate Weather."""
-    # Exclude everything except currently + alerts to keep the payload small
-    # and the request fast (see Pirate Weather docs: exclude=).
+
+    # Exclude everything except currently + alerts.
     exclude = "minutely,hourly,daily,day_night,flags,summary"
     url = f"{BASE_URL}/{api_key}/{lat},{lon}" f"?units={units}&exclude={exclude}"
 
-    headers = {"User-Agent": identity.user_agent()}
+    headers: dict[str, str] = {"User-Agent": identity.user_agent()}
     try:
-        resp = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
+        resp: requests.Response = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
         resp.raise_for_status()
     except requests.exceptions.HTTPError:
-        body = resp.text[:200] if resp is not None else ""  # type: ignore
+        body: str = resp.text[:200] if resp is not None else ""  # type: ignore
         logger.error(f"HTTP {resp.status_code} from Pirate Weather: {body}")  # type: ignore
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error reaching Pirate Weather: {e}")
@@ -68,11 +69,11 @@ def deg_to_compass(deg: int) -> str:
         "NW",
         "NNW",
     ]
-    ix = int((deg / 22.5) + 0.5) % 16
+    ix: int = int((deg / 22.5) + 0.5) % 16
     return dirs[ix]
 
 
-def unit_labels(units: str = "") -> dict:
+def unit_labels(units: str = "") -> dict[str, str]:
     """Return display unit suffixes for the requested unit system. Defaults to SI."""
 
     units_dict: dict[str, str] = {
@@ -94,58 +95,61 @@ def unit_labels(units: str = "") -> dict:
 
 def format_current(data: dict, units: str) -> str:
     """Format the current conditions for human ingestion."""
-    cur: dict | None = data.get("currently")
-    if not cur:
+    current: dict[str, Any] | None = data.get("currently")
+    if not current:
+        logger.error("Conditions returned empty.")
         return "Current conditions unavailable."
 
     wx_units = unit_labels(units)
 
-    summary = cur.get("summary", "N/A")
-    temp = cur.get("temperature")
-    feels = cur.get("apparentTemperature")
-    humidity = cur.get("humidity")
-    wind_speed = cur.get("windSpeed")
-    wind_bearing = cur.get("windBearing")
-    visibility = cur.get("visibility")
+    summary: str = current.get("summary", "N/A")
+    temp: float = current.get("temperature")
+    feels: float = current.get("apparentTemperature")
+    humidity: float = current.get("humidity")
+    wind_speed: float = current.get("windSpeed")
+    wind_bearing: int = current.get("windBearing")
+    visibility: float = current.get("visibility")
 
-    parts = []
+    parts:list[str] = []
     parts.append("WX")
     parts.append(f"{summary}")
     if temp is not None:
-        line = f"Temp {temp:.0f}{wx_units['temp']}"
+        line: str = f"Temp {temp:.0f}{wx_units['temp']}"
         if feels is not None and round(feels) != round(temp):
             line += f" (feels {feels:.0f}{wx_units['temp']})"
         parts.append(line)
     if humidity is not None:
         parts.append(f"Humidity {humidity * 100:.0f}%")
     if wind_speed is not None:
-        wind_line = f"Wind {wind_speed:.0f}{wx_units['wind']}"
+        wind_line: str = f"Wind {wind_speed:.0f}{wx_units['wind']}"
         if wind_bearing is not None:
             wind_line += f" {deg_to_compass(wind_bearing)}"
         parts.append(wind_line)
     if visibility is not None and visibility < 6.0:
-        parts.append(f"Visibility {visibility}{wx_units['vis']}")
-    return " | ".join(parts)
+        parts.append(f"Visibility {visibility:.0f}{wx_units['vis']}")
+    conditions: str = " | ".join(parts)
+    logger.info(conditions)
+    return conditions
 
 
 def format_alerts(data: dict) -> str:
     """Format the alert information to provide with the weather information."""
     alerts: list | None = data.get("alerts")
     alert_report: str = ""
-    lines = []
+    lines: list[str] = []
 
     if alerts:
         for a in alerts:
-            title = a.get("title", "Alert")
-            severity = a.get("severity", "Unknown")
+            title: str = a.get("title", "Alert")
+            severity: str = a.get("severity", "Unknown")
             lines.append(f"[{severity.upper()}] {title}")
         lines = list(set(lines))
-        alert_report = " | ".join(lines)
+        alert_report: str = " | ".join(lines)
 
     return alert_report
 
 
-def wx():
+def wx() -> None:
     api_key: str = flenv.get_env("FLTOOLS_PW_API_KEY")
     units: str = flenv.get_env("FLTOOLS_PW_UNITS", "us")  # us, si, ca, uk, uk2
     my_grid: str = flenv.get_env("FLDIGI_MY_LOCATOR")
@@ -160,8 +164,17 @@ def wx():
             "Pirate Weather API key not set. Edit wx.py or set FLTOOLS_PW_API_KEY."
         )
 
+    data: dict[str, Any] = {}
     try:
         data = fetch_weather(api_key, f"{latitude:0.4f}", f"{longitude:0.4f}", units)
+        output_lines: list[str] = [format_current(data, units)]
+
+        alerts_text: str = format_alerts(data)
+        if alerts_text:
+            output_lines.append(f"ALERTS: {alerts_text}")
+
+        print("\n".join(output_lines))
+        
     except RuntimeError as e:
         # Print something short so it doesn't break a macro insertion,
         # but also signal failure on stderr / exit code.
@@ -169,10 +182,4 @@ def wx():
         logger.error(str(e))
         print("")
 
-    output_lines = [format_current(data, units)]  # type: ignore
 
-    alerts_text = format_alerts(data)  # type: ignore
-    if alerts_text:
-        output_lines.append("ALERTS: " + alerts_text)
-
-    print("\n".join(output_lines))
