@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# fltools - shim that runs the installed `fltools` CLI from inside FLDigi's
+# fltools - bash utility that runs the installed `fltools` CLI from inside FLDigi's
 # <EXEC> macro child process.
 #
 # INSTALL
@@ -35,7 +35,7 @@
 #   convention (~/.config/fltools and friends on Linux, ~/Library/... on
 #   macOS). Run `fltools --paths` in a terminal to see them.
 #
-#   This shim deliberately does NOT set FLTOOLS_HOME. Do not point that at
+#   This bash script deliberately does NOT set FLTOOLS_HOME. Do not point that at
 #   anything inside ~/.fldigi: deleting that directory is a routine FLDigi
 #   troubleshooting step, and your QRZ and Club Log credentials should not
 #   evaporate with it.
@@ -56,7 +56,7 @@ LOG_FILE="${TMPDIR:-/tmp}/fltools-startup.err"
 
 # Absolute paths only. Do NOT change this to `exec fltools "$@"` on the
 # assumption that PATH will sort it out: FLDigi puts ~/.fldigi/scripts first
-# on PATH and this shim is named `fltools` too, so a PATH lookup would find
+# on PATH and this bash script is named `fltools` too, so a PATH lookup would find
 # this file and exec itself forever.
 #
 # Candidate locations for the console script installed by `uv tool install`.
@@ -79,7 +79,7 @@ done
 
 if [ -z "$FLTOOLS_EXE" ]; then
   {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') fltools shim: executable not found."
+    echo "$(date '+%Y-%m-%d %H:%M:%S') fltools bash utility: executable not found."
     echo "  Looked in: ${CANDIDATES[*]}"
     echo "  Install it with: uv tool install /path/to/fltools"
     echo "  Or set FLTOOLS_BIN to its absolute path."

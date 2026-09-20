@@ -29,7 +29,7 @@ def log_uncaught(
     Route any unhandled exception into the rotating log.
 
     Without this, a traceback goes to stderr, which under FLDigi means it
-    lands in whatever file the shim redirects to, or nowhere at all. A macro
+    lands in whatever file the bash utility redirects to, or nowhere at all. A macro
     key that silently does nothing is the worst failure mode this tool has.
     """
     if issubclass(exc_type, KeyboardInterrupt):

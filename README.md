@@ -103,7 +103,7 @@ It gives you three things on macro keys:
   block straight into the transmit buffer.
 
 Everything runs as one entry point, `fltools`, with a subcommand per job. A small
-bash shim handles the awkward part of being launched by FLDigi (no login shell,
+bash utility handles the awkward part of being launched by FLDigi (no login shell,
 no useful `PATH`, and a stdout stream that goes out over the air).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -165,9 +165,9 @@ no useful `PATH`, and a stdout stream that goes out over the air).
    > **Note:** `.env` grants write access to your logbooks. Keep it out of
    > version control.
 
-4. Install the launcher shim into FLDigi's script directory. FLDigi prepends
+4. Install the launcher bash utility into FLDigi's script directory. FLDigi prepends
    `~/.fldigi/scripts` to `PATH` for `<EXEC>` children, so this is what lets a
-   macro simply say `fltools qrz`. The shim needs no editing: it locates the
+   macro simply say `fltools qrz`. The bash utility needs no editing: it locates the
    installed executable by absolute path.
    ```sh
    cp utilities/fltools ~/.fldigi/scripts/fltools
@@ -192,15 +192,15 @@ which means `~/.config/fltools/.env` on Linux and
 `~/Library/Application Support/fltools/.env` on macOS. Run `fltools --paths` for
 the authoritative answer on your machine.
 
-| Variable             | Used by   | Description                                                                        |
-|----------------------|-----------|------------------------------------------------------------------------------------|
-| `QRZ_KEY`            | `qrz`     | QRZ Logbook API key. Required.                                                     |
-| `CLUBLOG_EMAIL`      | `clublog` | The email address on your Club Log account. Required.                              |
-| `CLUBLOG_PASSWORD`   | `clublog` | Club Log Application Password. Required.                                           |
-| `CLUBLOG_API_KEY`    | `clublog` | Club Log API key. Required.                                                        |
-| `FLTOOLS_CALL`       | all       | The callsign this installation is set up for. See below.                           |
-| `FLTOOLS_PW_API_KEY` | `wx`      | Pirate Weather API key. Required.                                                  |
-| `FLTOOLS_PW_UNITS`   | `wx`      | Unit system: `us`, `si`, `ca`, `uk`, or `uk2`. Defaults to `us`.                   |
+| Variable             | Used by   | Description                                                      |
+|----------------------|-----------|------------------------------------------------------------------|
+| `QRZ_KEY`            | `qrz`     | QRZ Logbook API key. Required.                                   |
+| `CLUBLOG_EMAIL`      | `clublog` | The email address on your Club Log account. Required.            |
+| `CLUBLOG_PASSWORD`   | `clublog` | Club Log Application Password. Required.                         |
+| `CLUBLOG_API_KEY`    | `clublog` | Club Log API key. Required.                                      |
+| `FLTOOLS_CALL`       | all       | The callsign this installation is set up for. See below.         |
+| `FLTOOLS_PW_API_KEY` | `wx`      | Pirate Weather API key. Required.                                |
+| `FLTOOLS_PW_UNITS`   | `wx`      | Unit system: `us`, `si`, `ca`, `uk`, or `uk2`. Defaults to `us`. |
 
 `.example_env` lists every one of these with empty values, so copying it is the
 fastest way to get a valid starting file.
@@ -215,12 +215,12 @@ in the wrong logbook.
 Two variables are deliberately absent from `.env`, because they decide where
 `.env` itself is found and so must be set in the environment:
 
-| Variable       | Effect                                                                   |
-|----------------|--------------------------------------------------------------------------|
+| Variable       | Effect                                                                                |
+|----------------|---------------------------------------------------------------------------------------|
 | `FLTOOLS_HOME` | Put `.env`, `logs/`, and `state/` under one directory instead of the platform layout. |
-| `FLTOOLS_ENV`  | Use one specific `.env` file, overriding only the config location.       |
+| `FLTOOLS_ENV`  | Use one specific `.env` file, overriding only the config location.                    |
 
-If you set `FLTOOLS_HOME`, set it in both your shell profile and the shim, or
+If you set `FLTOOLS_HOME`, set it in both your shell profile and the bash utility, or
 macro runs and terminal runs will read different files.
 
 Your grid square is not configured here. `wx` takes it from FLDigi's
@@ -234,7 +234,7 @@ hardcoded default near Ellicott City, Maryland if FLDigi does not supply one.
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Once the shim is installed, every subcommand is reachable from a macro or from
+Once the bash utility is installed, every subcommand is reachable from a macro or from
 your shell.
 
 ```sh
@@ -385,10 +385,10 @@ Two files, both in the platform log directory (`~/Library/Logs/fltools` on
 macOS, `~/.local/state/fltools/log` on Linux). `fltools --paths` reports the
 exact location.
 
-| File                    | Written by     | Contents                                             |
-|-------------------------|----------------|------------------------------------------------------|
-| `fltools.log`           | the Python CLI | Success and failure of each run, plus API responses. |
-| `fltools-startup.err`   | the bash shim  | Launch failures only, before Python starts.          |
+| File                  | Written by       | Contents                                             |
+|-----------------------|------------------|------------------------------------------------------|
+| `fltools.log`         | the Python CLI   | Success and failure of each run, plus API responses. |
+| `fltools-startup.err` | the bash utility | Launch failures only, before Python starts.          |
 
 `fltools.log` rotates at roughly 1 MB and keeps 3 older copies. The default level
 is `INFO`. For the full ADIF record sent upstream, pass `logging.DEBUG` to
@@ -404,16 +404,16 @@ tail -f "$(fltools --paths | awk '/log file/ {print $3}')"
 
 ### Troubleshooting
 
-**`fltools shim: executable not found` in `fltools-startup.err`**
+**`fltools bash utility: executable not found` in `fltools-startup.err`**
 The `<EXEC>` child does not get a login or interactive shell, so it never sources
 your `.bashrc` or `.profile` and `~/.local/bin` is probably not on its `PATH`.
-The shim searches absolute paths instead. Confirm `uv tool list` shows `fltools`,
+The bash utility searches absolute paths instead. Confirm `uv tool list` shows `fltools`,
 and if the executable is somewhere unusual, set `FLTOOLS_BIN` to its full path.
 
 **Nothing at all happens when I press the key**
-Confirm the shim is executable and that FLDigi sees it. It should appear in the
+Confirm the bash utility is executable and that FLDigi sees it. It should appear in the
 macro editor's exec-script list. Then check `fltools-startup.err`. A zero-byte
-file means the shim ran and handed off cleanly, so look in `fltools.log` next.
+file means the bash utility ran and handed off cleanly, so look in `fltools.log` next.
 
 **`No .env loaded from ...`**
 The file is not where `fltools` is looking. The message names the exact path it
@@ -459,29 +459,6 @@ location in Maryland.
 The near-term theme is consistency. The three subcommands grew out of three
 standalone scripts, and they still behave like it. Everything below is about
 making `fltools` one tool rather than three under a shared launcher.
-
-- [ ] Give every subcommand the same exit code contract, so 0/1/2/3 mean the same
-      thing whichever one you called
-- [ ] Bring `qrz` and `clublog` to parity: shared ADIF helpers, the same
-      credential and required-field validation, and equivalent protection against
-      hammering an API that has already said no
-- [ ] Give `wx` a failure path, so a dead API key or an unreachable Pirate Weather
-      is reported rather than printing an empty line and returning 0
-- [ ] Replace the `sys.exit()` calls with graceful failure handling, so a run
-      stands down cleanly instead of dropping out mid-flight
-- [ ] Sort out the collision with `argparse`'s usage exit code of 2
-- [ ] Use `flenv.get_env()` in `qrz.py` so a logbook field FLDigi does not export
-      returns empty instead of raising `KeyError`
-- [ ] Rename `QRZ_REQUIRED_ADIF_FIELDS`, now that `clublog` validates against it
-      too
-- [ ] Make the `wx` fallback location configurable, or refuse to transmit rather
-      than report weather for somewhere the operator has never been
-- [ ] Add a `Makefile` covering the things currently done by hand: install the
-      shim into `~/.fldigi/scripts`, install and reinstall the tool, rebuild the
-      project venv, and run the linters. One `make install` beats remembering
-      which `uv` incantation rebuilds what
-- [ ] Support more than one callsign per installation, so portable operation and
-      a second operator do not require editing `.env`
 
 See the [open issues](https://github.com/SpinStabilized/fltools/issues) for a
 full list of proposed features and known issues.
