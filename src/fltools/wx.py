@@ -94,11 +94,11 @@ def unit_labels(units: str = "") -> dict:
 
 def format_current(data: dict, units: str) -> str:
     """Format the current conditions for human ingestion."""
-    cur = data.get("currently")
+    cur: dict | None = data.get("currently")
     if not cur:
         return "Current conditions unavailable."
 
-    u = unit_labels(units)
+    wx_units = unit_labels(units)
 
     summary = cur.get("summary", "N/A")
     temp = cur.get("temperature")
@@ -106,24 +106,25 @@ def format_current(data: dict, units: str) -> str:
     humidity = cur.get("humidity")
     wind_speed = cur.get("windSpeed")
     wind_bearing = cur.get("windBearing")
-    # visibility = cur.get("visibility")
+    visibility = cur.get("visibility")
 
     parts = []
     parts.append("WX")
     parts.append(f"{summary}")
     if temp is not None:
-        line = f"Temp {temp:.0f}{u['temp']}"
+        line = f"Temp {temp:.0f}{wx_units['temp']}"
         if feels is not None and round(feels) != round(temp):
-            line += f" (feels {feels:.0f}{u['temp']})"
+            line += f" (feels {feels:.0f}{wx_units['temp']})"
         parts.append(line)
     if humidity is not None:
         parts.append(f"Humidity {humidity * 100:.0f}%")
     if wind_speed is not None:
-        wind_line = f"Wind {wind_speed:.0f}{u['wind']}"
+        wind_line = f"Wind {wind_speed:.0f}{wx_units['wind']}"
         if wind_bearing is not None:
             wind_line += f" {deg_to_compass(wind_bearing)}"
         parts.append(wind_line)
-
+    if visibility is not None and visibility < 6.0:
+        parts.append(f"Visibility {visibility}{wx_units['vis']}")
     return " | ".join(parts)
 
 
