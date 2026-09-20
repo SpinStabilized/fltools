@@ -264,6 +264,8 @@ macro tags. `wx` uses that deliberately. `qrz` and `clublog` print nothing at
 all and report through the log file instead, so a failed upload will never put
 noise on the air.
 
+## Provided Tools
+
 ### fltools qrz
 
 Reads the `FLDIGI_LOGBOOK_*` variables for the selected entry, builds one ADIF
