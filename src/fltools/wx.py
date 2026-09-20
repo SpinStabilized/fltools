@@ -5,13 +5,12 @@ and print a compact, radio-friendly text block for use with FLDigi macros.
 
 import json
 import logging
-from typing import Final
+from typing import Any, Final
 
 import maidenhead
 import requests
 
 from fltools import flenv, identity, utils
-from typing import Any
 
 logger: logging.Logger = utils.get_fltools_logger()
 
@@ -30,7 +29,9 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict[str, Any
 
     headers: dict[str, str] = {"User-Agent": identity.user_agent()}
     try:
-        resp: requests.Response = requests.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
+        resp: requests.Response = requests.get(
+            url, headers=headers, timeout=TIMEOUT_SECONDS
+        )
         resp.raise_for_status()
     except requests.exceptions.HTTPError:
         body: str = resp.text[:200] if resp is not None else ""  # type: ignore
@@ -110,7 +111,7 @@ def format_current(data: dict, units: str) -> str:
     wind_bearing: int = current.get("windBearing")
     visibility: float = current.get("visibility")
 
-    parts:list[str] = []
+    parts: list[str] = []
     parts.append("WX")
     parts.append(f"{summary}")
     if temp is not None:
@@ -174,12 +175,10 @@ def wx() -> None:
             output_lines.append(f"ALERTS: {alerts_text}")
 
         print("\n".join(output_lines))
-        
+
     except RuntimeError as e:
         # Print something short so it doesn't break a macro insertion,
         # but also signal failure on stderr / exit code.
         logger.error("WX Unavailable.")
         logger.error(str(e))
         print("")
-
-
