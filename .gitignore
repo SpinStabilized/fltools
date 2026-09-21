@@ -9,8 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# IDE
+# VS Code Stuff
 .vscode/
+*.code-workspace
 
 # Dev env
 .ruff_cache
