@@ -102,9 +102,15 @@ It gives you three things on macro keys:
   [Pirate Weather][pw-url] for your Maidenhead grid square and prints a compact
   block straight into the transmit buffer.
 
-Everything runs as one entry point, `fltools`, with a subcommand per job. A small
-bash utility handles the awkward part of being launched by FLDigi (no login shell,
-no useful `PATH`, and a stdout stream that goes out over the air).
+Everything runs as one entry point, `fltools`, with a subcommand per job.
+`fltools --link` symlinks that entry point into FLDigi's script directory, which
+is what makes it reachable from a macro: the `<EXEC>` child gets no login shell
+and no useful `PATH`, but FLDigi puts its own script directory on the front of
+whatever `PATH` it does get.
+
+> **Platform support:** fltools targets Linux and macOS. It relies on FLDigi's
+> `<EXEC>` macro, on a POSIX symlink for the launcher, and on a shell-like
+> process environment. Windows is not supported and not tested.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -127,11 +133,14 @@ no useful `PATH`, and a stdout stream that goes out over the air).
 
 ### Prerequisites
 
+* **Linux or macOS.** See the platform note above.
 * **FLDigi**, with macro editing available (Configure > Macros).
 * **Python 3.10 or later.** `match` statements and PEP 604 unions set the floor.
   `requires-python` in `pyproject.toml` enforces it, `.python-version` pins the
   interpreter used for development, and `uv` will fetch one if you do not have it.
-* **[uv][uv-url]** for installing the tool and managing its dependencies.
+* **[uv][uv-url]** for installing the tool and managing its dependencies. The
+  `Makefile` drives it, so you should not need to call `uv` directly.
+* **make**, for the installation and development targets.
 * **Credentials for whichever subcommands you plan to use:**
   * QRZ: an XML Logbook Data subscription, then your key from
     **Logbook Data > Logbook Settings > API Key**.
@@ -147,34 +156,33 @@ no useful `PATH`, and a stdout stream that goes out over the air).
    cd fltools
    ```
 
-2. Install `fltools` as a tool. This puts a `fltools` executable on your
-   `PATH` (usually `~/.local/bin`) in its own isolated environment.
+2. Install it. This puts a `fltools` executable on your `PATH` (usually
+   `~/.local/bin`) in its own isolated environment, then symlinks it into
+   FLDigi's script directory. FLDigi prepends `~/.fldigi/scripts` to `PATH` for
+   `<EXEC>` children, which is what lets a macro simply say `fltools qrz`.
    ```sh
-   uv tool install .
+   make install
    ```
-   Add `--editable` if you are working on the source and want your edits live.
-   Either way, re-run with `--reinstall` after changing dependencies or the
-   version, since those are baked in at install time.
+   If you run more than one FLDigi instance (`fldigi --config-dir DIRECTORY`,
+   one per rig), list each configuration directory instead. Set `FLDIGI_DIRS`
+   at the top of the `Makefile` to make it permanent.
+   ```sh
+   make install FLDIGI_DIRS="~/.fldigi-hf ~/.fldigi-vhf"
+   ```
+   Use `make install-dev` instead if you are working on the source and want
+   your edits live without reinstalling. Either target is safe to re-run, and
+   `make help` lists everything else.
 
 3. Create your `.env`. `fltools` looks for it in a platform-specific
    configuration directory, so ask it where that is rather than guessing.
    ```sh
-   fltools --paths
+   make paths
    cp .example_env "$(dirname "$(fltools --paths | awk '/env file/ {print $3}')")/.env"
    ```
    > **Note:** `.env` grants write access to your logbooks. Keep it out of
    > version control.
 
-4. Install the launcher bash utility into FLDigi's script directory. FLDigi prepends
-   `~/.fldigi/scripts` to `PATH` for `<EXEC>` children, so this is what lets a
-   macro simply say `fltools qrz`. The bash utility needs no editing: it locates the
-   installed executable by absolute path.
-   ```sh
-   cp utilities/fltools ~/.fldigi/scripts/fltools
-   chmod +x ~/.fldigi/scripts/fltools
-   ```
-
-5. Add a macro in FLDigi (Configure > Macros) for each subcommand you want on a
+4. Add a macro in FLDigi (Configure > Macros) for each subcommand you want on a
    key.
    ```
    <EXEC>fltools qrz</EXEC>
@@ -220,8 +228,9 @@ Two variables are deliberately absent from `.env`, because they decide where
 | `FLTOOLS_HOME` | Put `.env`, `logs/`, and `state/` under one directory instead of the platform layout. |
 | `FLTOOLS_ENV`  | Use one specific `.env` file, overriding only the config location.                    |
 
-If you set `FLTOOLS_HOME`, set it in both your shell profile and the bash utility, or
-macro runs and terminal runs will read different files.
+If you set `FLTOOLS_HOME`, remember that the `<EXEC>` child does not read your
+shell profile. Unless it is exported somewhere FLDigi itself inherits it, macro
+runs and terminal runs will read different files.
 
 Your grid square is not configured here. `wx` takes it from FLDigi's
 `FLDIGI_MY_LOCATOR` (Configure > Operator > Station), and falls back to a
@@ -234,7 +243,7 @@ hardcoded default near Ellicott City, Maryland if FLDigi does not supply one.
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Once the bash utility is installed, every subcommand is reachable from a macro or from
+Once the link is in place, every subcommand is reachable from a macro or from
 your shell.
 
 ```sh
@@ -257,6 +266,16 @@ Run from a checkout without installing the tool:
 ```sh
 uv run fltools wx
 ```
+
+Useful `make` targets beyond installation, with `make help` for the full list:
+
+| Target        | Does                                                          |
+|---------------|---------------------------------------------------------------|
+| `make dev`    | Create or update the project venv, including the dev group.   |
+| `make link`   | Re-point the FLDigi symlinks after a reinstall or a move.     |
+| `make paths`  | Show where `fltools` reads and writes its files.              |
+| `make check`  | Formatting, linting, types, Python floor, and lockfile.       |
+| `make uninstall` | Remove the symlinks and uninstall the tool.                |
 
 One thing to know before putting these on keys: FLDigi captures the child
 process's **stdout and appends it to the transmit buffer**, re-parsing it for
@@ -383,14 +402,11 @@ logbook field.
 
 ### Logging
 
-Two files, both in the platform log directory (`~/Library/Logs/fltools` on
-macOS, `~/.local/state/fltools/log` on Linux). `fltools --paths` reports the
-exact location.
-
-| File                  | Written by       | Contents                                             |
-|-----------------------|------------------|------------------------------------------------------|
-| `fltools.log`         | the Python CLI   | Success and failure of each run, plus API responses. |
-| `fltools-startup.err` | the bash utility | Launch failures only, before Python starts.          |
+One file, `fltools.log`, in the platform log directory (`~/Library/Logs/fltools`
+on macOS, `~/.local/state/fltools/log` on Linux). `fltools --paths` reports the
+exact location. It records the success or failure of each run, the API
+responses, and, when several FLDigi instances share it, which instance made the
+call.
 
 `fltools.log` rotates at roughly 1 MB and keeps 3 older copies. The default level
 is `INFO`. For the full ADIF record sent upstream, pass `logging.DEBUG` to
@@ -406,16 +422,16 @@ tail -f "$(fltools --paths | awk '/log file/ {print $3}')"
 
 ### Troubleshooting
 
-**`fltools bash utility: executable not found` in `fltools-startup.err`**
-The `<EXEC>` child does not get a login or interactive shell, so it never sources
-your `.bashrc` or `.profile` and `~/.local/bin` is probably not on its `PATH`.
-The bash utility searches absolute paths instead. Confirm `uv tool list` shows `fltools`,
-and if the executable is somewhere unusual, set `FLTOOLS_BIN` to its full path.
-
 **Nothing at all happens when I press the key**
-Confirm the bash utility is executable and that FLDigi sees it. It should appear in the
-macro editor's exec-script list. Then check `fltools-startup.err`. A zero-byte
-file means the bash utility ran and handed off cleanly, so look in `fltools.log` next.
+Confirm the link exists and resolves: `ls -l ~/.fldigi/scripts/fltools` should
+point at your installed executable. It should also appear in the macro editor's
+exec-script list. If the link is dangling, the tool was reinstalled or moved
+since it was made, and `make link` repairs it.
+
+**The macro does nothing and `fltools.log` says nothing either**
+That means `fltools` never started, so there is nothing to log. Nothing captures
+stderr from the `<EXEC>` child, so run the same subcommand in a terminal, where
+the error will be visible.
 
 **`No .env loaded from ...`**
 The file is not where `fltools` is looking. The message names the exact path it
