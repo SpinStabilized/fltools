@@ -2,7 +2,16 @@
 
 PACKAGE       := fltools
 SRC_DIR       := src/
-FLDIGI_LINK   := ~/.fldigi/scripts/fltools
+
+# --- FLDIGI CONFIGURATION DIRECTORIES ---
+# Where the fltools symlink gets placed. FLDigi defaults to ~/.fldigi, but a
+# station running more than one rig launches an instance per configuration
+# (fldigi --config-dir DIRECTORY), and each one needs its own link. List them
+# all here, or override for a single run:
+#     make link FLDIGI_DIRS="~/.fldigi-hf ~/.fldigi-vhf"
+FLDIGI_DIRS   := ~/.fldigi
+FLDIGI_SCRIPTS := $(addsuffix /scripts,$(FLDIGI_DIRS))
+FLDIGI_LINKS  := $(addsuffix /fltools,$(FLDIGI_SCRIPTS))
 
 # --- PYTHON FLOOR ---
 # The oldest interpreter fltools supports. Kept in step with requires-python
@@ -18,24 +27,24 @@ install: ## Install fltools as a tool and link it into FLDigi's script dir
 	@echo "=== INSTALLING TOOL ==="
 	uv tool install . --reinstall
 	@echo "=== LINKING INTO FLDIGI ==="
-	$(PACKAGE) --link
+	$(PACKAGE) --link $(FLDIGI_SCRIPTS)
 .PHONY: install
 
 install-dev: ## Install as an editable tool so source edits take effect live
 	@echo "=== INSTALLING TOOL (EDITABLE) ==="
 	uv tool install --editable . --reinstall
 	@echo "=== LINKING INTO FLDIGI ==="
-	$(PACKAGE) --link
+	$(PACKAGE) --link $(FLDIGI_SCRIPTS)
 .PHONY: install-dev
 
-link: ## Re-point the FLDigi symlink at the installed executable
+link: ## Re-point the FLDigi symlinks at the installed executable
 	@echo "=== LINKING INTO FLDIGI ==="
-	$(PACKAGE) --link
+	$(PACKAGE) --link $(FLDIGI_SCRIPTS)
 .PHONY: link
 
-uninstall: ## Remove the FLDigi symlink and uninstall the tool
-	@echo "=== REMOVING FLDIGI LINK ==="
-	rm -f $(FLDIGI_LINK)
+uninstall: ## Remove the FLDigi symlinks and uninstall the tool
+	@echo "=== REMOVING FLDIGI LINKS ==="
+	rm -f $(FLDIGI_LINKS)
 	@echo "=== UNINSTALLING TOOL ==="
 	uv tool uninstall $(PACKAGE)
 .PHONY: uninstall

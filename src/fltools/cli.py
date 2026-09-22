@@ -83,10 +83,10 @@ def console_script() -> pathlib.Path:
 
 
 class LinkAction(argparse.Action):
-    """Symlink this executable into FLDigi's script directory, then exit."""
+    """Symlink this executable into FLDigi's script directories, then exit."""
 
     def __init__(self, option_strings: Sequence[str], dest: str, **kwargs: Any) -> None:
-        super().__init__(option_strings, dest, nargs="?", **kwargs)
+        super().__init__(option_strings, dest, nargs="*", **kwargs)
 
     def __call__(
         self,
@@ -95,36 +95,43 @@ class LinkAction(argparse.Action):
         values: str | Sequence[Any] | None,
         option_string: str | None = None,
     ) -> None:
-        # nargs="?" yields a str or None, but the base signature is wider, so
-        # narrow it explicitly rather than trusting the runtime value.
-        target: str | None = values if isinstance(values, str) else None
-
-        scripts_dir: pathlib.Path = (
-            pathlib.Path(target).expanduser()
-            if target
-            else pathlib.Path.home() / ".fldigi" / "scripts"
+        # nargs="*" yields a list, empty when the flag was given bare. FLDigi
+        # supports any number of configuration directories, one per rig, each
+        # selected with its own --config-dir switch at launch.
+        targets: list[str] = list(values) if isinstance(values, list) else []
+        scripts_dirs: list[pathlib.Path] = (
+            [pathlib.Path(target).expanduser() for target in targets]
+            if targets
+            else [pathlib.Path.home() / ".fldigi" / "scripts"]
         )
-        source: pathlib.Path = console_script()
-        link: pathlib.Path = scripts_dir / "fltools"
 
+        source: pathlib.Path = console_script()
         if not source.exists():
             print(f"Cannot find the fltools executable at {source}", file=sys.stderr)
             parser.exit(1)
 
-        # Refuse to destroy anything that is not ours to replace. A symlink we
-        # can safely repoint; a real file might be someone's own script.
-        if link.exists() and not link.is_symlink():
-            print(
-                f"{link} already exists and is not a symlink. Move it aside first.",
-                file=sys.stderr,
-            )
+        failed: bool = False
+        for scripts_dir in scripts_dirs:
+            link: pathlib.Path = scripts_dir / "fltools"
+
+            # Refuse to destroy anything that is not ours to replace. A symlink
+            # we can safely repoint; a real file might be someone's own script.
+            if link.exists() and not link.is_symlink():
+                print(
+                    f"{link} already exists and is not a symlink. Move it aside first.",
+                    file=sys.stderr,
+                )
+                failed = True
+                continue
+
+            scripts_dir.mkdir(parents=True, exist_ok=True)
+            link.unlink(missing_ok=True)
+            link.symlink_to(source)
+            print(f"Linked {link} -> {source}")
+
+        if failed:
             parser.exit(1)
 
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        link.unlink(missing_ok=True)
-        link.symlink_to(source)
-
-        print(f"Linked {link} -> {source}")
         print("Macros can now call it directly, e.g. <EXEC>fltools qrz</EXEC>")
         parser.exit()
 
@@ -163,8 +170,8 @@ def parse_args() -> argparse.Namespace:
         metavar="DIR",
         default=argparse.SUPPRESS,
         help=(
-            "Symlink this executable into FLDigi's script directory "
-            "(default ~/.fldigi/scripts), then exit"
+            "Symlink this executable into one or more FLDigi script "
+            "directories (default ~/.fldigi/scripts), then exit"
         ),
     )
 
@@ -203,6 +210,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     sys.excepthook = log_uncaught
+
+    config_dir: str = flenv.get_env("FLDIGI_CONFIG_DIR")
+    if config_dir:
+        logger.info(f"Invoked from FLDigi instance at {config_dir}")
 
     args: argparse.Namespace = parse_args()
 
