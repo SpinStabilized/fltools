@@ -14,8 +14,8 @@ wheels/
 *.code-workspace
 
 # Dev env
-.ruff_cache
-.mypy_cache
+.ruff_cache/
+.mypy_cache/
 
 # env files...just to be safe
 # Environment Files
