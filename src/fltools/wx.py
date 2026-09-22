@@ -21,9 +21,14 @@ DEFAULT_LON: Final[float] = -76.8610
 
 
 def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict[str, Any]:
-    """Request only the 'currently' and 'alerts' blocks from Pirate Weather."""
+    """
+    Request only the 'currently' and 'alerts' blocks from Pirate Weather.
 
-    # Exclude everything except currently + alerts.
+    Returns an empty dict on any failure, so the caller can treat "no weather
+    available" as a normal outcome rather than transmitting a half-built line.
+    """
+    # Exclude everything except currently + alerts to keep the payload small
+    # and the request fast (see Pirate Weather docs: exclude=).
     exclude = "minutely,hourly,daily,day_night,flags,summary"
     url = f"{BASE_URL}/{api_key}/{lat},{lon}" f"?units={units}&exclude={exclude}"
 
@@ -33,19 +38,29 @@ def fetch_weather(api_key: str, lat: str, lon: str, units: str) -> dict[str, Any
             url, headers=headers, timeout=TIMEOUT_SECONDS
         )
         resp.raise_for_status()
-    except requests.exceptions.HTTPError:
-        body: str = resp.text[:200] if resp is not None else ""  # type: ignore
-        logger.error(f"HTTP {resp.status_code} from Pirate Weather: {body}")  # type: ignore
+    except requests.exceptions.HTTPError as e:
+        # Reached through the exception rather than through resp: a failure
+        # inside requests.get() leaves resp unbound entirely, and referring to
+        # it here is exactly what the old "type: ignore" comments were hiding.
+        if e.response is not None:
+            detail: str = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        else:
+            detail = str(e)
+        logger.error(f"Pirate Weather refused the request: {detail}")
+        return {}
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error reaching Pirate Weather: {e}")
+        return {}
 
-    as_json: dict = {}
     try:
-        as_json = resp.json()  # type: ignore
+        # Bound to a name rather than returned directly: resp.json() is typed
+        # Any, which warn_return_any flags.
+        payload: dict[str, Any] = resp.json()
     except json.JSONDecodeError as e:
         logger.error(f"Could not parse Pirate Weather response: {e}")
+        return {}
 
-    return as_json
+    return payload
 
 
 def deg_to_compass(deg: int) -> str:
@@ -70,11 +85,11 @@ def deg_to_compass(deg: int) -> str:
         "NW",
         "NNW",
     ]
-    ix: int = int((deg / 22.5) + 0.5) % 16
+    ix = int((deg / 22.5) + 0.5) % 16
     return dirs[ix]
 
 
-def unit_labels(units: str = "") -> dict[str, str]:
+def unit_labels(units: str = "") -> dict:
     """Return display unit suffixes for the requested unit system. Defaults to SI."""
 
     units_dict: dict[str, str] = {
@@ -96,89 +111,101 @@ def unit_labels(units: str = "") -> dict[str, str]:
 
 def format_current(data: dict, units: str) -> str:
     """Format the current conditions for human ingestion."""
-    current: dict[str, Any] | None = data.get("currently")
-    if not current:
-        logger.error("Conditions returned empty.")
+    cur = data.get("currently")
+    if not cur:
         return "Current conditions unavailable."
 
-    wx_units = unit_labels(units)
+    u = unit_labels(units)
 
-    summary: str = current.get("summary", "N/A")
-    temp: float = current.get("temperature")
-    feels: float = current.get("apparentTemperature")
-    humidity: float = current.get("humidity")
-    wind_speed: float = current.get("windSpeed")
-    wind_bearing: int = current.get("windBearing")
-    visibility: float = current.get("visibility")
+    summary: str = cur.get("summary", "N/A")
+    temp: float = cur.get("temperature")
+    feels: float = cur.get("apparentTemperature")
+    humidity: float = cur.get("humidity")
+    wind_speed: float = cur.get("windSpeed")
+    wind_bearing: int = cur.get("windBearing")
+    # visibility = cur.get("visibility")
 
-    parts: list[str] = []
+    parts = []
     parts.append("WX")
     parts.append(f"{summary}")
     if temp is not None:
-        line: str = f"Temp {temp:.0f}{wx_units['temp']}"
+        line = f"Temp {temp:.0f}{u['temp']}"
         if feels is not None and round(feels) != round(temp):
-            line += f" (feels {feels:.0f}{wx_units['temp']})"
+            line += f" (feels {feels:.0f}{u['temp']})"
         parts.append(line)
     if humidity is not None:
         parts.append(f"Humidity {humidity * 100:.0f}%")
     if wind_speed is not None:
-        wind_line: str = f"Wind {wind_speed:.0f}{wx_units['wind']}"
+        wind_line = f"Wind {wind_speed:.0f}{u['wind']}"
         if wind_bearing is not None:
             wind_line += f" {deg_to_compass(wind_bearing)}"
         parts.append(wind_line)
-    if visibility is not None and visibility < 6.0:
-        parts.append(f"Visibility {visibility:.0f}{wx_units['vis']}")
-    conditions: str = " | ".join(parts)
-    logger.info(conditions)
-    return conditions
+
+    return " | ".join(parts)
 
 
 def format_alerts(data: dict) -> str:
     """Format the alert information to provide with the weather information."""
     alerts: list | None = data.get("alerts")
     alert_report: str = ""
-    lines: list[str] = []
+    lines = []
 
     if alerts:
         for a in alerts:
-            title: str = a.get("title", "Alert")
-            severity: str = a.get("severity", "Unknown")
+            title = a.get("title", "Alert")
+            severity = a.get("severity", "Unknown")
             lines.append(f"[{severity.upper()}] {title}")
         lines = list(set(lines))
-        alert_report: str = " | ".join(lines)
+        alert_report = " | ".join(lines)
 
     return alert_report
 
 
 def wx() -> None:
+    """
+    Print current conditions and any active alerts for the station's grid.
+
+    Prints nothing at all when the weather cannot be fetched. This output goes
+    straight into FLDigi's transmit buffer, so a partial or empty line is worse
+    than no line: it would be sent over the air. Failures are reported in the
+    log instead.
+    """
     api_key: str = flenv.get_env("FLTOOLS_PW_API_KEY")
     units: str = flenv.get_env("FLTOOLS_PW_UNITS", "us")  # us, si, ca, uk, uk2
-    my_grid: str = flenv.get_env("FLDIGI_MY_LOCATOR")
+    my_grid: str = flenv.get_env("FLDIGI_MY_LOCATOR").strip()
 
+    if not api_key:
+        logger.error("FLTOOLS_PW_API_KEY is not set (check .env). No weather sent.")
+        return
+
+    latitude: float
+    longitude: float
     if my_grid:
         latitude, longitude = maidenhead.to_location(my_grid, center=True)
     else:
+        logger.warning(
+            "FLDIGI_MY_LOCATOR is empty, falling back to the default location. "
+            "Set your grid square in FLDigi under Configure > Operator > Station."
+        )
         latitude, longitude = DEFAULT_LAT, DEFAULT_LON
 
-    if not api_key or api_key == "":
-        logger.error(
-            "Pirate Weather API key not set. Edit wx.py or set FLTOOLS_PW_API_KEY."
-        )
+    logger.info(
+        f"Weather for {my_grid or 'default location'} "
+        f"({latitude:0.4f}, {longitude:0.4f})"
+    )
 
-    data: dict[str, Any] = {}
-    try:
-        data = fetch_weather(api_key, f"{latitude:0.4f}", f"{longitude:0.4f}", units)
-        output_lines: list[str] = [format_current(data, units)]
+    data: dict[str, Any] = fetch_weather(
+        api_key, f"{latitude:0.4f}", f"{longitude:0.4f}", units
+    )
+    if not data:
+        # fetch_weather has already logged why. Say nothing on stdout.
+        logger.error("No weather data available, nothing sent to the transmit buffer.")
+        return
 
-        alerts_text: str = format_alerts(data)
-        if alerts_text:
-            output_lines.append(f"ALERTS: {alerts_text}")
+    output_lines: list[str] = [format_current(data, units)]
 
-        print("\n".join(output_lines))
+    alerts_text: str = format_alerts(data)
+    if alerts_text:
+        output_lines.append("ALERTS: " + alerts_text)
 
-    except RuntimeError as e:
-        # Print something short so it doesn't break a macro insertion,
-        # but also signal failure on stderr / exit code.
-        logger.error("WX Unavailable.")
-        logger.error(str(e))
-        print("")
+    print("\n".join(output_lines))

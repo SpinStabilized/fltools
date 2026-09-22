@@ -23,3 +23,19 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
       - id: detect-private-key
+
+  # mypy needs the project's own dependencies to resolve imports, which the
+  # standard mirrors-mypy hook cannot provide. Running it through uv reuses the
+  # project environment, so the hook and `make typecheck` check the same thing
+  # with the same versions.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        # mypy needs the whole package to resolve cross-module types, not just
+        # the files that happen to be staged. `files` in pyproject.toml decides
+        # what gets checked.
+        pass_filenames: false
