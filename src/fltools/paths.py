@@ -86,9 +86,31 @@ def ensure_dirs() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
+def fldigi_config_dir() -> pathlib.Path | None:
+    """
+    The configuration directory of the FLDigi instance that invoked us.
+
+    FLDigi exports FLDIGI_CONFIG_DIR to its <EXEC> children, which is the only
+    way to tell one instance from another: a station running several rigs
+    launches an instance per configuration (fldigi --config-dir DIRECTORY),
+    and they all share one fltools log.
+
+    Not a location fltools reads or writes, and unset outside a macro. Returns
+    None rather than a default, because guessing which instance called would
+    be worse than admitting we do not know.
+    """
+    value: str = os.getenv("FLDIGI_CONFIG_DIR", "").strip()
+    return pathlib.Path(value) if value else None
+
+
 def describe() -> dict[str, pathlib.Path]:
-    """Every resolved location, for the `fltools --paths` flag."""
-    return {
+    """
+    Every resolved location, for the `fltools --paths` flag.
+
+    The FLDigi configuration directory is included only when FLDigi set it,
+    since outside an <EXEC> macro there is nothing to report.
+    """
+    described: dict[str, pathlib.Path] = {
         "config dir": CONFIG_DIR,
         "env file": ENV_FILE,
         "log dir": LOG_DIR,
@@ -96,3 +118,9 @@ def describe() -> dict[str, pathlib.Path]:
         "state dir": STATE_DIR,
         "lockout file": LOCKOUT_FILE,
     }
+
+    calling_instance: pathlib.Path | None = fldigi_config_dir()
+    if calling_instance is not None:
+        described["fldigi config dir"] = calling_instance
+
+    return described

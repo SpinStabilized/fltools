@@ -211,10 +211,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     sys.excepthook = log_uncaught
 
-    config_dir: str = flenv.get_env("FLDIGI_CONFIG_DIR")
-    if config_dir:
-        logger.info(f"Invoked from FLDigi instance at {config_dir}")
-
     args: argparse.Namespace = parse_args()
 
     # load_dotenv returns False for a missing file rather than raising, so an
@@ -223,6 +219,12 @@ def main() -> None:
     # where this is looking.
     if not dotenv.load_dotenv(paths.ENV_FILE):
         logger.warning(f"No .env loaded from {paths.ENV_FILE}")
+
+    # Several rigs mean several FLDigi instances sharing one log file. Record
+    # which one called, or there is no way to attribute anything afterward.
+    calling_instance: pathlib.Path | None = paths.fldigi_config_dir()
+    if calling_instance is not None:
+        logger.info(f"Called from the FLDigi instance at {calling_instance}")
 
     args.func(args)
 
